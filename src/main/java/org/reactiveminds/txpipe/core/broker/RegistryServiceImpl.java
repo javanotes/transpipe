@@ -2,8 +2,6 @@ package org.reactiveminds.txpipe.core.broker;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
@@ -13,8 +11,6 @@ import javax.annotation.PreDestroy;
 
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
 import org.reactiveminds.txpipe.api.TransactionService;
 import org.reactiveminds.txpipe.core.ComponentDef;
 import org.reactiveminds.txpipe.core.ComponentManager;
@@ -31,12 +27,13 @@ import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.AcknowledgingConsumerAwareMessageListener;
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
+import org.springframework.kafka.listener.ErrorHandler;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.util.StringUtils;
 
 class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareMessageListener<String,String> {
 
-	private static final Logger log = LoggerFactory.getLogger(RegistryServiceImpl.class);
+	static final Logger log = LoggerFactory.getLogger("RegistryServiceImpl");
 	@Autowired
 	BeanFactory beans;
 	@Autowired
@@ -48,9 +45,8 @@ class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareM
 	@Autowired
 	KafkaPublisher pubAdmin;
 	
-	private JsonMapper mapper = new JsonMapper();
-	@Value("${txpipe.broker.orchestrationTopic:managerTopic}")
-	private String orchestrationTopic;
+	JsonMapper mapper = new JsonMapper();
+	@Value("${txpipe.broker.orchestrationTopic:managerTopic}") String orchestrationTopic;
 	
 	private ConcurrentMap<String, PipelineDef> register = new ConcurrentHashMap<>();
 	private ConcurrentMessageListenerContainer<String, String> container;
@@ -61,58 +57,70 @@ class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareM
 	@SuppressWarnings("unchecked")
 	@PostConstruct
 	private void onStart() {
-		container = (ConcurrentMessageListenerContainer<String, String>) beans.getBean("kafkaListenerContainer", orchestrationTopic, groupId, 1, new KafkaConsumer.ContainerErrHandler());
+		container = (ConcurrentMessageListenerContainer<String, String>) beans.getBean("kafkaListenerContainer", orchestrationTopic, groupId, 1, new ErrorHandler() {
+			
+			@Override
+			public void handle(Exception t, ConsumerRecord<?, ?> data) {
+				log.error("Registry manager error on consume "+data, t);
+			}
+		});
 		container.setupMessageListener(this);
 		container.start();
 		
-		AllDefinitionLoader loader = new AllDefinitionLoader();
+		AllDefinitionsLoader loader = new AllDefinitionsLoader(orchestrationTopic);
 		loader.run();
 		loader.allDefinitions.forEach(def -> put(def));
 		log.info("Loaded all existing definitions into registry ..");
 	}
-	@PreDestroy
-	private void destroy() {
-		container.stop();
-	}
-	private class AllDefinitionLoader implements Runnable{
+	/**
+	 * Load all {@link PipelineDef} saved in Kafka topic as edit log.
+	 * @author Sutanu_Dalui
+	 *
+	 */
+	private class AllDefinitionsLoader implements Runnable{
 
-		private Map<TopicPartition, Long> endOffsets;
-		private Consumer<String, String> consumer;
 		private final List<PipelineDef> allDefinitions = new ArrayList<>();
+		
+		private JsonMapper mapper = new JsonMapper();
+		private String queryTopic;
+		/**
+		 * 
+		 * @param queryTopic
+		 */
+		public AllDefinitionsLoader(String queryTopic) {
+			super();
+			this.queryTopic = queryTopic;
+		}
+
 		@Override
 		public void run() {
-			
-			try {
-				consumer = consumerFactory.createConsumer(UUID.randomUUID().toString(), "");
-				List<TopicPartition> topicParts = consumer.partitionsFor(orchestrationTopic).stream()
-						.map(p -> new TopicPartition(orchestrationTopic, p.partition())).collect(Collectors.toList());
-
-				consumer.assign(topicParts);
-				consumer.seekToBeginning(consumer.assignment());
-				endOffsets = consumer.endOffsets(consumer.assignment());
-				
-				//the data has to come in order. else we cannot convert stream to table. that is why we should keep the partition as 1.
-				while (hasPendingMessages()) {
-					ConsumerRecords<String, String> records = consumer.poll(10);
-					records.forEach(c -> allDefinitions.add(mapper.toObject(c.value(), PipelineDef.class)));
-					consumer.commitSync();
+			KafkaTopicIterator iter = null;
+			try 
+			{
+				iter = beans.getBean(KafkaTopicIterator.class, queryTopic);
+				iter.run();
+				allDefinitions.clear();
+				while(iter.hasNext()) {
+					List<PipelineDef> items = iter.next().stream().map(s -> mapper.toObject(s, PipelineDef.class)).collect(Collectors.toList());
+					allDefinitions.addAll(items);
 				}
-				
+							
 			} 
 			catch (Exception e) {
 				log.error("Loading of existing definitions failed on startup!", e);
 			}
 			finally {
-				if (consumer != null) {
-					consumer.close();
+				if (iter != null) {
+					iter.close();
 				}
 			}
 		}
-		
-		private boolean hasPendingMessages() {
-			return endOffsets.entrySet().stream().anyMatch(e -> e.getValue() > consumer.position(e.getKey()));
-		}
-		
+			
+	}
+	
+	@PreDestroy
+	private void destroy() {
+		container.stop();
 	}
 	@Override
 	public void add(PipelineDef pipeline) {
@@ -132,13 +140,17 @@ class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareM
 
 	@Override
 	public PipelineDef get(String pipelineId) {
-		return register.get(pipelineId);
+		PipelineDef def = register.get(pipelineId);
+		if(def != null)
+			return new PipelineDef(def.getPipelineId(), def.getComponents());
+		
+		return null;
 	}
 
 	@Override
 	public String getSource(String pipelineId) {
 		if(contains(pipelineId)) {
-			return get(pipelineId).getOpeningChannel();
+			return register.get(pipelineId).getOpeningChannel();
 		}
 		return null;
 	}

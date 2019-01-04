@@ -8,6 +8,17 @@ import org.springframework.util.Assert;
 
 public class PipelineDef {
 
+	/**
+	 * Copy constructor
+	 * @param pipelineId
+	 * @param components
+	 */
+	public PipelineDef(String pipelineId, List<ComponentDef> components) {
+		super();
+		this.pipelineId = pipelineId;
+		this.components.addAll(components.stream().map(c -> c.copy()).collect(Collectors.toList()));
+	}
+
 	public PipelineDef() {
 	}
 	

@@ -107,4 +107,10 @@ class KafkaConfiguration {
 		container.setConcurrency(concurrency);
 		return container;
     }
+	@Bean
+	@Scope(scopeName = ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+	@Lazy
+	KafkaTopicIterator queryTopic(String queryTopic) {
+		return new KafkaTopicIterator(queryTopic);
+	}
 }

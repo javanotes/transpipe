@@ -36,7 +36,10 @@ class CommitProcessor extends RollbackProcessor {
 		{
 			String response = process(event);
 			if (StringUtils.hasText(commitLink)) {
-				publisher.publish(response, commitLink, event.getPipeline(), event.getTxnId());
+				Event next = event.copy();
+				next.setPayload(response);
+				next.setDestination(commitLink);
+				publisher.publish(next);
 				log.debug("Passed commit to " + commitLink);
 			}
 		} catch (Exception e) {

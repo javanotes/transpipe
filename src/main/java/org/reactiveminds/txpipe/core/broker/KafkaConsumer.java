@@ -1,5 +1,7 @@
 package org.reactiveminds.txpipe.core.broker;
 
+import java.io.UncheckedIOException;
+
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.reactiveminds.txpipe.api.TransactionService;
 import org.reactiveminds.txpipe.core.CommitFailedException;
@@ -18,18 +20,26 @@ import org.springframework.kafka.support.Acknowledgment;
 
 abstract class KafkaConsumer implements Subscriber,AcknowledgingConsumerAwareMessageListener<String,String> {
 
-	public static final class ContainerErrHandler implements ErrorHandler {
-		private static final Logger CLOG = LoggerFactory.getLogger("ContainerErrHandler");
+	private static final Logger CLOG = LoggerFactory.getLogger("ContainerErrHandler");
+	public final class ContainerErrHandler implements ErrorHandler {
+		
 		@Override
 		public void handle(Exception t, ConsumerRecord<?, ?> data) {
-			if(t instanceof CommitFailedException) {
-				CLOG.warn("Commit failure encountered on message from topic "+data.topic()+"["+data.partition()+"] at offset "+data.offset()+". Key - "+data.key());
-				CLOG.debug("", t);
-			}
+			if (t instanceof CommitFailedException) {
+				CLOG.warn("Commit failure from topic " + data.topic() + ", on key [" + data.key() + "] :: " + t.getMessage());
+				CLOG.debug(""+data.value(), t);
+			} 
+			else if (t instanceof UncheckedIOException) {
+				CLOG.error("Json parse exception on consuming message from topic " + data.topic() + ", on key [" + data.key() + "] :: " + t.getMessage());
+				CLOG.debug(""+data.value(), t);
+			} 
 			else {
-				CLOG.error("Exception on consuming message from topic "+data.topic()+"["+data.partition()+"] at offset "+data.offset()+". Key - "+data.key(), t);
-				CLOG.debug("Error in consumed message : "+data.value());
+				CLOG.error("Exception on consuming message from topic " + data.topic() + "[" + data.partition()
+						+ "] at offset " + data.offset() + ". Key - " + data.key(), t);
+				CLOG.debug("Error in consumed message : " + data.value());
 			}
+			
+			recordEvent(data, t);
 		}
 	}
 
@@ -78,22 +88,28 @@ abstract class KafkaConsumer implements Subscriber,AcknowledgingConsumerAwareMes
 		if(isCommitMode) {
 			return service.commit(event.getTxnId(), event.getPayload());
 		}
-		else
+		else {
 			service.rollback(event.getTxnId());
-		
+		}
 		return null;
-		
 	}
+	
 	@Override
 	public void onMessage(ConsumerRecord<String, String> data, Acknowledgment ack,
 			org.apache.kafka.clients.consumer.Consumer<?, ?> consumer) {
 		Event event = mapper.toObject(data.value(), Event.class);
 		try {
 			consume(event);
+			recordEvent(data, null);
 		} 
 		finally {
 			ack.acknowledge();//no message retry
 		}
+		
+	}
+
+	private void recordEvent(ConsumerRecord<?, ?> data, Exception isError) {
+		// TODO Auto-generated method stub
 		
 	}
 }

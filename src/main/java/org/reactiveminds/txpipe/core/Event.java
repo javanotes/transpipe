@@ -18,9 +18,7 @@ public class Event {
 	public long getEventId() {
 		return eventId;
 	}
-	public void setEventId(long eventId) {
-		this.eventId = eventId;
-	}
+	
 	public long getTimestamp() {
 		return timestamp;
 	}
@@ -35,7 +33,7 @@ public class Event {
 	}
 	private String payload;
 	private String txnId;
-	private long eventId;
+	private int eventId;
 	private long timestamp;
 	private String destination;
 	private String pipeline;
@@ -47,21 +45,27 @@ public class Event {
 	 * @param timestamp
 	 * @param destination
 	 */
-	protected Event(String payload, String txnId, long eventId, long timestamp, String destination) {
+	private Event(String payload, String txnId, int eventId, long timestamp, String destination, String pipeline) {
 		super();
 		this.payload = payload;
 		this.txnId = txnId;
 		this.eventId = eventId;
 		this.timestamp = timestamp;
 		this.destination = destination;
+		this.pipeline = pipeline;
 	}
 	public Event copy() {
-		return new Event(this.payload, this.txnId, this.eventId, this.timestamp, this.destination);
+		return new Event(this.payload, this.txnId, this.eventId+1, this.timestamp, this.destination, this.pipeline);
 	}
 	public String getPipeline() {
 		return pipeline;
 	}
 	public void setPipeline(String pipeline) {
 		this.pipeline = pipeline;
+	}
+	@Override
+	public String toString() {
+		return "Event [payload=" + payload + ", txnId=" + txnId + ", eventId=" + eventId + ", timestamp=" + timestamp
+				+ ", destination=" + destination + ", pipeline=" + pipeline + "]";
 	}
 }

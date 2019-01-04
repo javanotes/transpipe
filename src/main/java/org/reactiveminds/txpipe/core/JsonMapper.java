@@ -1,6 +1,7 @@
 package org.reactiveminds.txpipe.core;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -9,7 +10,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class JsonMapper {
 
 	private static class Wrapper{
-		public static final ObjectMapper mapper = new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+		public static final ObjectMapper mapper = new ObjectMapper()
+				.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+				;
 	}
 	/**
 	 * 	
@@ -20,7 +23,7 @@ public class JsonMapper {
 		try {
 			return Wrapper.mapper.writerFor(object.getClass()).writeValueAsString(object);
 		} catch (JsonProcessingException e) {
-			throw new IllegalArgumentException(e);
+			throw new UncheckedIOException(e);
 		}
 	}
 	/**
@@ -33,7 +36,7 @@ public class JsonMapper {
 		try {
 			return Wrapper.mapper.readerFor(type).readValue(json);
 		} catch (IOException e) {
-			throw new IllegalArgumentException(e);
+			throw new UncheckedIOException(e);
 		}
 	}
 }
