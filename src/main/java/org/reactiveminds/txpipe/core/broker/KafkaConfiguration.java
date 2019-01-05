@@ -9,6 +9,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.reactiveminds.txpipe.core.broker.PartitionAwareMessageListenerContainer.PartitionListener;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -21,7 +22,6 @@ import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.listener.AbstractMessageListenerContainer.AckMode;
-import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
 import org.springframework.kafka.listener.ErrorHandler;
 import org.springframework.kafka.listener.config.ContainerProperties;
 import org.springframework.stereotype.Component;
@@ -85,7 +85,6 @@ class KafkaConfiguration {
           StringDeserializer.class);
         return new DefaultKafkaConsumerFactory<>(props);
     }
-	
 	/**
 	 * Get a consumer listener container
 	 * @param topic
@@ -96,14 +95,16 @@ class KafkaConfiguration {
 	@Scope(scopeName = ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 	@Lazy
 	@Bean
-    public ConcurrentMessageListenerContainer<String, String> 
+    public PartitionAwareMessageListenerContainer 
       kafkaListenerContainer(String topic, String groupId, int concurrency, ErrorHandler errHandler) {
     
 		ContainerProperties props = new ContainerProperties(topic);
 		props.setAckMode(AckMode.MANUAL_IMMEDIATE);
 		props.setGroupId(groupId);
 		props.setErrorHandler(errHandler);
-		ConcurrentMessageListenerContainer<String, String> container =  new ConcurrentMessageListenerContainer<>(consumerFactory(), props);
+		PartitionListener partListener = new PartitionListener();
+		props.setConsumerRebalanceListener(partListener);
+		PartitionAwareMessageListenerContainer container =  new PartitionAwareMessageListenerContainer(consumerFactory(), props, partListener);
 		container.setConcurrency(concurrency);
 		return container;
     }

@@ -1,6 +1,7 @@
 package org.reactiveminds.txpipe.core.broker;
 
 import java.io.UncheckedIOException;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.reactiveminds.txpipe.api.TransactionService;
@@ -14,14 +15,14 @@ import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.listener.AcknowledgingConsumerAwareMessageListener;
-import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
 import org.springframework.kafka.listener.ErrorHandler;
 import org.springframework.kafka.support.Acknowledgment;
 
-abstract class KafkaConsumer implements Subscriber,AcknowledgingConsumerAwareMessageListener<String,String> {
+abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareMessageListener<String,String> {
 
+	static final Logger PLOG = LoggerFactory.getLogger("KafkaSubscriber");
 	private static final Logger CLOG = LoggerFactory.getLogger("ContainerErrHandler");
-	public final class ContainerErrHandler implements ErrorHandler {
+	private final class ContainerErrHandler implements ErrorHandler {
 		
 		@Override
 		public void handle(Exception t, ConsumerRecord<?, ?> data) {
@@ -43,33 +44,47 @@ abstract class KafkaConsumer implements Subscriber,AcknowledgingConsumerAwareMes
 		}
 	}
 
-	@Value("${txnpipe.broker.listenerConcurrency:1}")
+	@Value("${txpipe.broker.listenerConcurrency:1}")
 	private int concurreny;
-	private ConcurrentMessageListenerContainer<String, String> container;
+	@Value("${txpipe.broker.awaitConsumerRebalance:true}")
+	private boolean awaitConsumerRebalance;
+	@Value("${txpipe.broker.awaitConsumerRebalance.maxWaitSecs:30}")
+	private long awaitConsumerRebalanceMaxWait;
+	private PartitionAwareMessageListenerContainer container;
 	@Autowired
 	BeanFactory factory;
 	protected boolean isCommitMode = false;
-	
-	@SuppressWarnings("unchecked")
+	protected String pipeline;
+	@Override
+	public void setPipelineId(String pipeline) {
+		this.pipeline = pipeline;
+	}
 	@Override
 	public void run() {
-		container = (ConcurrentMessageListenerContainer<String, String>) factory.getBean("kafkaListenerContainer", topic, componentId, concurreny, new ContainerErrHandler());
+		container = (PartitionAwareMessageListenerContainer) factory.getBean("kafkaListenerContainer", listeningTopic, getListenerId(), concurreny, new ContainerErrHandler());
 		container.setupMessageListener(this);
 		container.start();
+		if (awaitConsumerRebalance) {
+			boolean done = container.getPartitionListener().awaitOnReady(awaitConsumerRebalanceMaxWait, TimeUnit.SECONDS);
+			if(!done)
+				PLOG.debug("Container rebalancing did not stabilize in "+awaitConsumerRebalanceMaxWait+" secs .. " + getListenerId());
+		}
+		PLOG.debug("Container ready .. " + getListenerId());
 	}
-	protected final String topic;
-	protected KafkaConsumer(String topic) {
-		this.topic = topic;
+	protected final String listeningTopic;
+	protected KafkaSubscriber(String topic) {
+		this.listeningTopic = topic;
 	}
 	private JsonMapper mapper = new JsonMapper();
 	@Override
 	public void stop() {
 		container.stop();
+		PLOG.info("Container stopped .. "+getListenerId());
 	}
 
 	@Override
 	public String getListenerId() {
-		return container != null ? container.getBeanName() : "";
+		return pipeline+"."+componentId;
 	}
 
 	protected String componentId;
@@ -93,23 +108,39 @@ abstract class KafkaConsumer implements Subscriber,AcknowledgingConsumerAwareMes
 		}
 		return null;
 	}
-	
+	private boolean isPassFilter(String key) {
+		try {
+			return pipeline.equals(KafkaPublisher.extractPipeline(key));
+		} catch (Exception e) {
+			CLOG.warn("Err on record key filtering - "+e.getMessage());
+			CLOG.debug("", e);
+		}
+		return false;
+	}
 	@Override
 	public void onMessage(ConsumerRecord<String, String> data, Acknowledgment ack,
 			org.apache.kafka.clients.consumer.Consumer<?, ?> consumer) {
-		Event event = mapper.toObject(data.value(), Event.class);
+		
 		try {
-			consume(event);
-			recordEvent(data, null);
+			if(isPassFilter(data.key())) {
+				doOnMessage(data);
+			}
 		} 
 		finally {
 			ack.acknowledge();//no message retry
 		}
-		
 	}
-
-	private void recordEvent(ConsumerRecord<?, ?> data, Exception isError) {
-		// TODO Auto-generated method stub
-		
+	private void doOnMessage(ConsumerRecord<String, String> data) {
+		Event event = mapper.toObject(data.value(), Event.class);
+		consume(event);
+		recordEvent(data, null);
+	}
+	/**
+	 * 
+	 * @param data
+	 * @param isError
+	 */
+	protected void recordEvent(ConsumerRecord<?, ?> data, Exception isError) {
+		//TODO: record event
 	}
 }

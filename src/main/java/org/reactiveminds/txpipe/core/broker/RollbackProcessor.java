@@ -5,8 +5,13 @@ import org.reactiveminds.txpipe.core.Publisher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 
-class RollbackProcessor extends KafkaConsumer {
-
+class RollbackProcessor extends KafkaSubscriber {
+	
+	@Override
+	public String toString() {
+		return "RollbackProcessor [rollbackLink=" + rollbackLink + ", listeningTopic=" + listeningTopic
+				+ ", componentId=" + componentId + "]";
+	}
 	@Autowired
 	Publisher publisher;
 	public String getRollbackLink() {
@@ -42,5 +47,4 @@ class RollbackProcessor extends KafkaConsumer {
 	public void setCommitLink(String commitLink) {
 		//noops
 	}
-
 }

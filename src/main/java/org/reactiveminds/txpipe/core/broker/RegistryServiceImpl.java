@@ -1,7 +1,10 @@
 package org.reactiveminds.txpipe.core.broker;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
@@ -69,8 +72,10 @@ class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareM
 		
 		AllDefinitionsLoader loader = new AllDefinitionsLoader(orchestrationTopic);
 		loader.run();
-		loader.allDefinitions.forEach(def -> put(def));
+		loader.allDefinitions.forEach(def -> doPut(def));
 		log.info("Loaded all existing definitions into registry ..");
+		
+		register.values().forEach(p -> startPipeline(p));
 	}
 	/**
 	 * Load all {@link PipelineDef} saved in Kafka topic as edit log.
@@ -127,8 +132,14 @@ class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareM
 		broadcast(pipeline);
 	}
 
-	private void put(PipelineDef def) {
-		def.getComponents().forEach(c -> startComponent(c));
+	private void startThenPut(PipelineDef def) {
+		startPipeline(def);
+		doPut(def);
+	}
+	private void startPipeline(PipelineDef def) {
+		def.getComponents().forEach(c -> startComponent(c, def.getPipelineId()));
+	}
+	private void doPut(PipelineDef def) {
 		register.put(def.getPipelineId(), def);
 		log.info("Pipeline definition registered - " + def.getPipelineId()+". (Not all services may be running, however)");
 		log.debug(def.toString());
@@ -162,7 +173,7 @@ class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareM
 	@Override
 	public void onMessage(ConsumerRecord<String, String> data, Acknowledgment acknowledgment, Consumer<?, ?> consumer) {
 		PipelineDef def = mapper.toObject(data.value(), PipelineDef.class);
-		put(def);
+		startThenPut(def);
 		acknowledgment.acknowledge();
 	}
 	
@@ -174,37 +185,79 @@ class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareM
 	@Value("${txpipe.broker.topicReplica:1}")
 	private short replica;
 	
+	private static class RegisteredProcessor{
+		private final Subscriber commit;
+		private final Subscriber rollback;
+		public RegisteredProcessor(Subscriber commit, Subscriber rollback) {
+			super();
+			this.commit = commit;
+			this.rollback = rollback;
+		}
+		
+		void stop() {
+			if(commit != null)
+				commit.stop();
+			if(rollback != null)
+				rollback.stop();
+		}
+	}
 	
 	private boolean isTxnBeanExists(String bean) {
 		return beanFactory.containsBean(bean) && beanFactory.isTypeMatch(bean, TransactionService.class);
 	}
-	private void startComponent(ComponentDef defn) {
+	private void startComponent(ComponentDef defn, String pipe) {
 		if(isTxnBeanExists(defn.getComponentId())/* && startedComponents.putIfAbsent(defn.getComponentId(), true) == null*/) {
-			startConsumers(defn);
+			startConsumers(defn, pipe);
 		}
 		else {
 			log.debug("No TransactionService bean found for component - " + defn.getComponentId());
 		}
 	}
-	private void startConsumers(ComponentDef defn) {
-		Subscriber commiter = (Subscriber) beanFactory.getBean(ComponentManager.COMMIT_PROCESSOR_BEAN_NAME, defn.getCommitQueue());
-		commiter.setCommitLink(defn.getCommitQueueNext());
-		commiter.setRollbackLink(defn.getRollbackQueuePrev());
-		commiter.setComponentId(defn.getComponentId());
+	private final Map<String, RegisteredProcessor> processorRegistry = Collections.synchronizedMap(new HashMap<>());
+	/**
+	 * Prepare and start the consumers.
+	 * @param defn
+	 * @param pipe
+	 */
+	private void startConsumers(ComponentDef defn, String pipe) {
 		
-		Subscriber rollbacker = null;
+		Subscriber commitSub = (Subscriber) beanFactory.getBean(ComponentManager.COMMIT_PROCESSOR_BEAN_NAME, defn.getCommitQueue());
+		commitSub.setCommitLink(defn.getCommitQueueNext());
+		commitSub.setRollbackLink(defn.getRollbackQueuePrev());
+		commitSub.setComponentId(defn.getComponentId());
+		commitSub.setPipelineId(pipe);
+		
+		Subscriber rollbackSub = null;
 		if(StringUtils.hasText(defn.getRollbackQueue())) {
-			rollbacker = (Subscriber) beanFactory.getBean(ComponentManager.ROLLBACK_PROCESSOR_BEAN_NAME, defn.getRollbackQueue());
-			rollbacker.setRollbackLink(defn.getRollbackQueuePrev());
-			rollbacker.setComponentId(defn.getComponentId());
+			rollbackSub = (Subscriber) beanFactory.getBean(ComponentManager.ROLLBACK_PROCESSOR_BEAN_NAME, defn.getRollbackQueue());
+			rollbackSub.setRollbackLink(defn.getRollbackQueuePrev());
+			rollbackSub.setComponentId(defn.getComponentId());
+			rollbackSub.setPipelineId(pipe);
 		}
+		
+		String key = commitSub.getListenerId();
+		
+		if(processorRegistry.containsKey(key)) {
+			log.warn("Running processors for "+ key + " are being stopped on new configuration received ..");
+			RegisteredProcessor proc = processorRegistry.remove(key);
+			proc.stop();
+		}
+		
+		
 		createTopicsIfNotExist(defn);
 		
-		if(rollbacker != null)
-			rollbacker.run();
-		commiter.run();
+		if(rollbackSub != null) {
+			rollbackSub.run();
+		}
+		commitSub.run();
+		processorRegistry.put(key, new RegisteredProcessor(commitSub, rollbackSub));
 		
-		log.info("Started consumers for transaction component - " + defn.getComponentId());
+		log.debug(commitSub.toString());
+		if (rollbackSub != null) {
+			log.debug(rollbackSub.toString());
+		}
+		
+		log.info("Started consumers for transaction component " + key);
 	}
 	private void createTopicsIfNotExist(ComponentDef defn) {
 		if(StringUtils.hasText(defn.getCommitQueue()))

@@ -48,11 +48,23 @@ public class KafkaPublisher implements Publisher {
 		event.setPipeline(pipeline);
 		return publish(event);
 	}
-	
+	/**
+	 * extract the pipeline from key.
+	 * @param key
+	 * @return
+	 */
+	public static String extractPipeline(String key) {
+		int i = -1;
+		if((i = key.indexOf(KEY_SEP)) != -1) {
+			return key.substring(0,i);
+		}
+		throw new IllegalArgumentException("Not a valid key '"+key+"'");
+	}
+	static final char KEY_SEP = '|';
 	private String nextKey(Event event) {
 		Assert.hasText(event.getPipeline(), "Event pipeline not set " + event);
 		Assert.hasText(event.getTxnId(), "Event txnId not set "+ event);
-		return event.getPipeline()+"|"+event.getTxnId();
+		return event.getPipeline()+KEY_SEP+event.getTxnId();
 	}
 	@SuppressWarnings("serial")
 	@Override

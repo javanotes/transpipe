@@ -2,14 +2,11 @@ package org.reactiveminds.txpipe.core;
 
 import javax.annotation.PostConstruct;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.Assert;
 
 class DefaultComponentManager implements ComponentManager{
 
-	private static final Logger log = LoggerFactory.getLogger(DefaultComponentManager.class);
 	@Autowired
 	Publisher publisher;
 	@Autowired
@@ -31,7 +28,6 @@ class DefaultComponentManager implements ComponentManager{
 		registerComponents();
 	}
 	private void registerComponents() {
-		log.warn("TODO : Load component/s from configurations (?)");
 	}
 	@Override
 	public void registerPipeline(PipelineDef defn) {

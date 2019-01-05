@@ -28,6 +28,11 @@ public interface Subscriber extends Runnable{
 	void setComponentId(String componentId);
 	/**
 	 * 
+	 * @param pipeline
+	 */
+	void setPipelineId(String pipeline);
+	/**
+	 * 
 	 * @param rollbackLink
 	 */
 	void setRollbackLink(String rollbackLink);

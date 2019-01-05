@@ -20,15 +20,15 @@ class CommitProcessor extends RollbackProcessor {
 		super(queueName);
 		isCommitMode = true;
 	}
+	
 	@Override
 	public String toString() {
-		return " [commitLink=" + getCommitLink() + ", componentId=" + componentId + ", rollbackLink="
-				+ getRollbackLink() + "]";
+		return "CommitProcessor [commitLink=" + commitLink + ", listeningTopic=" + listeningTopic + ", componentId="
+				+ componentId + ", rollbackLink=" + getRollbackLink() + "]";
 	}
 	@Override
 	public void run() {
 		super.run();
-		log.info("Started consumer container - "+this);
 	}
 	@Override
 	public void consume(Event event) {
