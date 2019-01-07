@@ -1,4 +1,6 @@
-package org.reactiveminds.txpipe.core;
+package org.reactiveminds.txpipe.core.api;
+
+import org.reactiveminds.txpipe.core.PipelineDef;
 
 public interface ComponentManager {
 
@@ -18,4 +20,6 @@ public interface ComponentManager {
 
 	String ROLLBACK_PROCESSOR_BEAN_NAME = "rollbackProcessor";
 	String COMMIT_PROCESSOR_BEAN_NAME = "commitProcessor";
+	String ROLLBACK_RECORDER_BEAN_NAME = "rollbackRecorder";
+	String COMMIT_RECORDER_BEAN_NAME = "commitRecorder";
 }

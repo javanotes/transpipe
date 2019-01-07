@@ -1,4 +1,6 @@
-package org.reactiveminds.txpipe.core;
+package org.reactiveminds.txpipe.core.api;
+
+import org.reactiveminds.txpipe.core.PipelineDef;
 
 public interface RegistryService {
 	/**

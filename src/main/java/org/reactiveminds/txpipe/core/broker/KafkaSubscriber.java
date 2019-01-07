@@ -1,14 +1,18 @@
 package org.reactiveminds.txpipe.core.broker;
 
 import java.io.UncheckedIOException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.reactiveminds.txpipe.api.EventRecord;
+import org.reactiveminds.txpipe.api.EventRecorder;
 import org.reactiveminds.txpipe.api.TransactionService;
-import org.reactiveminds.txpipe.core.CommitFailedException;
 import org.reactiveminds.txpipe.core.Event;
-import org.reactiveminds.txpipe.core.JsonMapper;
-import org.reactiveminds.txpipe.core.Subscriber;
+import org.reactiveminds.txpipe.core.api.Subscriber;
+import org.reactiveminds.txpipe.err.CommitFailedException;
+import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.BeanFactory;
@@ -39,17 +43,61 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 						+ "] at offset " + data.offset() + ". Key - " + data.key(), t);
 				CLOG.debug("Error in consumed message : " + data.value());
 			}
-			
-			recordEvent(data, t);
+			if (recordEventAsync) {
+				eventThread.submit(new EventRecorderRunner(data, t));
+			}
+			else
+				new EventRecorderRunner(data, t).run();
 		}
 	}
+	/**
+	 * 
+	 * @author Sutanu_Dalui
+	 *
+	 */
+	private class EventRecorderRunner implements Runnable{
 
+		private EventRecorderRunner(ConsumerRecord<?, ?> data, Exception isError) {
+			super();
+			this.data = data;
+			this.isError = isError;
+		}
+		private final ConsumerRecord<?, ?> data;
+		private final Exception isError;
+		/**
+		 * record the event if needed for further tracing/analysis.
+		 * @param data
+		 * @param isError
+		 */
+		protected void recordEvent() {
+			if (eventRecorder() != null) {
+				EventRecord record = new EventRecord(data.topic(), data.partition(), data.offset(), data.timestamp(),
+						data.key().toString());
+				record.setError(isError != null);
+				if (record.isError()) {
+					record.setErrorDetail(isError.getMessage());
+				}
+				record.setValue(data.value().toString());
+				eventRecorder().record(record);
+			}
+		}
+		@Override
+		public void run() {
+			recordEvent();
+		}
+		
+	}
 	@Value("${txpipe.broker.listenerConcurrency:1}")
 	private int concurreny;
 	@Value("${txpipe.broker.awaitConsumerRebalance:true}")
 	private boolean awaitConsumerRebalance;
 	@Value("${txpipe.broker.awaitConsumerRebalance.maxWaitSecs:30}")
 	private long awaitConsumerRebalanceMaxWait;
+	@Value("${txpipe.broker.recordEventAsync:false}")
+	private boolean recordEventAsync;
+	@Value("${txpipe.broker.recordEventAsync.maxThreads:2}")
+	private int recordEventAsyncMaxThreads;
+	
 	private PartitionAwareMessageListenerContainer container;
 	@Autowired
 	BeanFactory factory;
@@ -59,9 +107,14 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	public void setPipelineId(String pipeline) {
 		this.pipeline = pipeline;
 	}
+	
+	private ExecutorService eventThread;
 	@Override
 	public void run() {
-		container = (PartitionAwareMessageListenerContainer) factory.getBean("kafkaListenerContainer", listeningTopic, getListenerId(), concurreny, new ContainerErrHandler());
+		if(recordEventAsync) {
+			eventThread = Executors.newFixedThreadPool(recordEventAsyncMaxThreads, (r)-> new Thread(r, "SubcriberEventRecorder"));
+		}
+		container = factory.getBean(PartitionAwareMessageListenerContainer.class, listeningTopic, getListenerId(), concurreny, new ContainerErrHandler());
 		container.setupMessageListener(this);
 		container.start();
 		if (awaitConsumerRebalance) {
@@ -80,6 +133,14 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	public void stop() {
 		container.stop();
 		PLOG.info("Container stopped .. "+getListenerId());
+		if(eventThread != null) {
+			eventThread.shutdown();
+			try {
+				eventThread.awaitTermination(10, TimeUnit.SECONDS);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+		}
 	}
 
 	@Override
@@ -133,14 +194,16 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	private void doOnMessage(ConsumerRecord<String, String> data) {
 		Event event = mapper.toObject(data.value(), Event.class);
 		consume(event);
-		recordEvent(data, null);
+		if (recordEventAsync) {
+			eventThread.submit(new EventRecorderRunner(data, null));
+		}
+		else
+			new EventRecorderRunner(data, null).run();
 	}
 	/**
-	 * 
-	 * @param data
-	 * @param isError
+	 * Get an {@linkplain EventRecorder} instance.
+	 * @return
 	 */
-	protected void recordEvent(ConsumerRecord<?, ?> data, Exception isError) {
-		//TODO: record event
-	}
+	abstract EventRecorder eventRecorder();
+	
 }

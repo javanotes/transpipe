@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core;
+package org.reactiveminds.txpipe.utils;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;

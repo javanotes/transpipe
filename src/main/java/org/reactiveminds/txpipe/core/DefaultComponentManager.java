@@ -2,6 +2,9 @@ package org.reactiveminds.txpipe.core;
 
 import javax.annotation.PostConstruct;
 
+import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.Publisher;
+import org.reactiveminds.txpipe.core.api.RegistryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.Assert;
 

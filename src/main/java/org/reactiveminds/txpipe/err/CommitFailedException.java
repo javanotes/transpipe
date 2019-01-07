@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core;
+package org.reactiveminds.txpipe.err;
 
 import org.springframework.core.NestedRuntimeException;
 /**

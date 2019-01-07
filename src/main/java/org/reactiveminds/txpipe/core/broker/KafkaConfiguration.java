@@ -102,7 +102,7 @@ class KafkaConfiguration {
 		props.setAckMode(AckMode.MANUAL_IMMEDIATE);
 		props.setGroupId(groupId);
 		props.setErrorHandler(errHandler);
-		PartitionListener partListener = new PartitionListener();
+		PartitionListener partListener = new PartitionListener(topic);
 		props.setConsumerRebalanceListener(partListener);
 		PartitionAwareMessageListenerContainer container =  new PartitionAwareMessageListenerContainer(consumerFactory(), props, partListener);
 		container.setConcurrency(concurrency);

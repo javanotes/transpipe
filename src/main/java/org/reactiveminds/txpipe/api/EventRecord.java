@@ -1,5 +1,9 @@
-package org.reactiveminds.txpipe.core.broker;
-
+package org.reactiveminds.txpipe.api;
+/**
+ * Record of an event, as processed by the transaction pipeline.
+ * @author Sutanu_Dalui
+ *
+ */
 public class EventRecord {
 
 	public EventRecord(String topic, int partition, long offset, long timestamp, String key) {
@@ -60,6 +64,12 @@ public class EventRecord {
 	public void setError(boolean isError) {
 		this.isError = isError;
 	}
+	public String getErrorDetail() {
+		return errorDetail;
+	}
+	public void setErrorDetail(String errorDetail) {
+		this.errorDetail = errorDetail;
+	}
 	private String topic;
     private int partition;
     private long offset;
@@ -68,4 +78,11 @@ public class EventRecord {
 	private String key;
 	private boolean isRollback;
 	private boolean isError;
+	private String errorDetail;
+	@Override
+	public String toString() {
+		return "EventRecord [topic=" + topic + ", partition=" + partition + ", offset=" + offset + ", timestamp="
+				+ timestamp + ", value=" + value + ", key=" + key + ", isRollback=" + isRollback + ", isError="
+				+ isError + ", errorDetail=" + errorDetail + "]";
+	}
 }

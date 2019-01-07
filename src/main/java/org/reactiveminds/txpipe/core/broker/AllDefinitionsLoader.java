@@ -4,8 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.reactiveminds.txpipe.core.JsonMapper;
 import org.reactiveminds.txpipe.core.PipelineDef;
+import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 

@@ -1,8 +1,8 @@
 package org.reactiveminds.txpipe.core.broker;
 
-import org.reactiveminds.txpipe.core.ComponentManager;
-import org.reactiveminds.txpipe.core.RegistryService;
-import org.reactiveminds.txpipe.core.Subscriber;
+import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.RegistryService;
+import org.reactiveminds.txpipe.core.api.Subscriber;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -36,4 +36,5 @@ public class BrokerEngineConfiguration {
 	public Subscriber rollbackProcessor(String queueName) {
 		return new RollbackProcessor(queueName);
 	}
+	
 }

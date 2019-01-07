@@ -13,16 +13,15 @@ import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.utils.Utils;
 import org.reactiveminds.txpipe.core.Event;
-import org.reactiveminds.txpipe.core.JsonMapper;
-import org.reactiveminds.txpipe.core.Publisher;
+import org.reactiveminds.txpipe.core.api.Publisher;
+import org.reactiveminds.txpipe.utils.JsonMapper;
+import org.reactiveminds.txpipe.utils.UUIDs;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.util.Assert;
-
-import com.datastax.driver.core.utils.UUIDs;
 
 public class KafkaPublisher implements Publisher {
 

@@ -2,9 +2,13 @@ package org.reactiveminds.txpipe.core.broker;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
+import java.util.Observable;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.common.TopicPartition;
@@ -16,30 +20,64 @@ import org.springframework.kafka.listener.config.ContainerProperties;
 
 public final class PartitionAwareMessageListenerContainer extends ConcurrentMessageListenerContainer<String, String>{
 
-	public static class PartitionListener implements ConsumerRebalanceListener{
+	public static class PartitionListener extends Observable implements ConsumerRebalanceListener{
 		private static final Logger log = LoggerFactory.getLogger("PartitionListener");
-		private final Set<TopicPartition> snapshot = new HashSet<>();
+		private final Map<String, Set<TopicPartition>> snapshot = new HashMap<>();
+		/**
+		 * 
+		 * @param partitions
+		 * @return
+		 */
+		private static Map<String, Set<TopicPartition>> streamToMap(Collection<TopicPartition> partitions){
+			return partitions.stream().collect(Collectors.groupingBy(TopicPartition::topic, Collectors.toSet()));
+		}
+		public PartitionListener(String topic) {
+			super();
+			this.topic = topic;
+		}
 		
+		private final String topic;
 		@Override
 		public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+			if(partitions.isEmpty())
+				return;
 			synchronized (snapshot) {
-				snapshot.removeAll(partitions);
+				streamToMap(partitions).forEach((k,v) -> {
+					if(snapshot.containsKey(k)) {
+						snapshot.get(k).removeAll(v);
+					}
+				});
 			}
-			log.info("partitions revoked "+partitions);
+			
+			if (log.isInfoEnabled()) {
+				snapshot.forEach((k, v) -> {
+					if (v.isEmpty()) {
+						log.warn("All partitions revoked for topic - " + k);
+					}
+				});
+				log.info("partitions revoked " + partitions);
+			}
 		}
 
 		@Override
 		public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+			if(partitions.isEmpty())
+				return;
 			synchronized (snapshot) {
-				snapshot.retainAll(partitions);
+				streamToMap(partitions).forEach((k,v) -> snapshot.put(k, v));
 				snapshot.notifyAll();
 			}
 			log.info("partitions assigned "+partitions);
 		}
-		
-		public Set<TopicPartition> getSnapshot(){
+		/**
+		 * 
+		 * @param topic
+		 * @return
+		 */
+		public Set<TopicPartition> getSnapshot() {
 			synchronized (snapshot) {
-				return Collections.unmodifiableSet(new HashSet<>(snapshot));
+				return snapshot.containsKey(topic) ? Collections.unmodifiableSet(new HashSet<>(snapshot.get(topic)))
+						: Collections.emptySet();
 			}
 		}
 		public void awaitOnReady() {
@@ -47,7 +85,7 @@ public final class PartitionAwareMessageListenerContainer extends ConcurrentMess
 		}
 		public boolean awaitOnReady(long duration, TimeUnit unit) {
 			synchronized (snapshot) {
-				if(snapshot.isEmpty()) {
+				if(!snapshot.containsKey(topic) || snapshot.get(topic).isEmpty()) {
 					try {
 						snapshot.wait(unit.toMillis(duration));
 					} catch (InterruptedException e) {
@@ -55,7 +93,7 @@ public final class PartitionAwareMessageListenerContainer extends ConcurrentMess
 					}
 				}
 				
-				return !snapshot.isEmpty();
+				return snapshot.containsKey(topic) && !snapshot.get(topic).isEmpty();
 			}
 		}
 		

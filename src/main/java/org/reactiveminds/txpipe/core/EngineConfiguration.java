@@ -1,5 +1,6 @@
 package org.reactiveminds.txpipe.core;
 
+import org.reactiveminds.txpipe.core.api.ComponentManager;
 import org.reactiveminds.txpipe.core.broker.BrokerEngineConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;

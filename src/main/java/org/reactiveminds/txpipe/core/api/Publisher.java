@@ -1,6 +1,8 @@
-package org.reactiveminds.txpipe.core;
+package org.reactiveminds.txpipe.core.api;
 
 import java.util.concurrent.Future;
+
+import org.reactiveminds.txpipe.core.Event;
 
 public interface Publisher {
 

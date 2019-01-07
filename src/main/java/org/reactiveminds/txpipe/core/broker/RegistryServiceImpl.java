@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import javax.annotation.PostConstruct;
@@ -16,11 +17,12 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.reactiveminds.txpipe.api.TransactionService;
 import org.reactiveminds.txpipe.core.ComponentDef;
-import org.reactiveminds.txpipe.core.ComponentManager;
-import org.reactiveminds.txpipe.core.JsonMapper;
 import org.reactiveminds.txpipe.core.PipelineDef;
-import org.reactiveminds.txpipe.core.RegistryService;
-import org.reactiveminds.txpipe.core.Subscriber;
+import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.RegistryService;
+import org.reactiveminds.txpipe.core.api.Subscriber;
+import org.reactiveminds.txpipe.err.ConfigurationException;
+import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.BeanFactory;
@@ -29,7 +31,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.AcknowledgingConsumerAwareMessageListener;
-import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
 import org.springframework.kafka.listener.ErrorHandler;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.util.StringUtils;
@@ -48,19 +49,20 @@ class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareM
 	@Autowired
 	KafkaPublisher pubAdmin;
 	
-	JsonMapper mapper = new JsonMapper();
-	@Value("${txpipe.broker.orchestrationTopic:managerTopic}") String orchestrationTopic;
+	
+	private JsonMapper mapper = new JsonMapper();
+	@Value("${txpipe.broker.orchestrationTopic:managerTopic}") 
+	private String orchestrationTopic;
 	
 	private ConcurrentMap<String, PipelineDef> register = new ConcurrentHashMap<>();
-	private ConcurrentMessageListenerContainer<String, String> container;
+	private PartitionAwareMessageListenerContainer container;
 	
 	@Value("${txpipe.instanceId}")
 	private String groupId;
 	
-	@SuppressWarnings("unchecked")
 	@PostConstruct
 	private void onStart() {
-		container = (ConcurrentMessageListenerContainer<String, String>) beans.getBean("kafkaListenerContainer", orchestrationTopic, groupId, 1, new ErrorHandler() {
+		container = beans.getBean(PartitionAwareMessageListenerContainer.class, orchestrationTopic, groupId, 1, new ErrorHandler() {
 			
 			@Override
 			public void handle(Exception t, ConsumerRecord<?, ?> data) {
@@ -69,6 +71,11 @@ class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareM
 		});
 		container.setupMessageListener(this);
 		container.start();
+		log.info("Connecting to cluster with instanceId '"+groupId+"'. This can take some time ..");
+		
+		container.getPartitionListener().awaitOnReady(30, TimeUnit.SECONDS);
+		if(container.getPartitionListener().getSnapshot().isEmpty())
+			throw new ConfigurationException("No orchestration partitions assigned! Is 'txpipe.instanceId' configured to be unique across cluster?");
 		
 		AllDefinitionsLoader loader = new AllDefinitionsLoader(orchestrationTopic);
 		loader.run();
@@ -141,7 +148,7 @@ class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareM
 	}
 	private void doPut(PipelineDef def) {
 		register.put(def.getPipelineId(), def);
-		log.info("Pipeline definition registered - " + def.getPipelineId()+". (Not all services may be running, however)");
+		log.info("Pipeline definition registered [" + def.getPipelineId()+"] (Not all services may be running, however)");
 		log.debug(def.toString());
 	}
 	@Override

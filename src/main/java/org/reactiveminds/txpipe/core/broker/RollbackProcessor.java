@@ -1,8 +1,11 @@
 package org.reactiveminds.txpipe.core.broker;
 
+import org.reactiveminds.txpipe.api.EventRecorder;
 import org.reactiveminds.txpipe.core.Event;
-import org.reactiveminds.txpipe.core.Publisher;
+import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.Publisher;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.util.StringUtils;
 
 class RollbackProcessor extends KafkaSubscriber {
@@ -47,4 +50,11 @@ class RollbackProcessor extends KafkaSubscriber {
 	public void setCommitLink(String commitLink) {
 		//noops
 	}
+	@Override
+	EventRecorder eventRecorder() {
+		return recorder;
+	}
+	@Autowired
+	@Qualifier(ComponentManager.ROLLBACK_RECORDER_BEAN_NAME)
+	private EventRecorder recorder;
 }
