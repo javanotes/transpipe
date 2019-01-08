@@ -2,7 +2,7 @@ package org.reactiveminds.txpipe.core.broker;
 
 import org.reactiveminds.txpipe.api.EventRecorder;
 import org.reactiveminds.txpipe.core.Event;
-import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,17 +34,26 @@ class CommitProcessor extends RollbackProcessor {
 	public void run() {
 		super.run();
 	}
+	private void propagate(Event event, String response) {
+		Event next = event.copy();
+		next.setPayload(response);
+		next.setDestination(commitLink);
+		publisher.publish(next);
+		log.debug("Passed commit to " + commitLink);
+	}
 	@Override
 	public void consume(Event event) {
+		if(initialStep)
+			beginTxn(event.getTxnId());
 		try 
 		{
 			String response = process(event);
 			if (StringUtils.hasText(commitLink)) {
-				Event next = event.copy();
-				next.setPayload(response);
-				next.setDestination(commitLink);
-				publisher.publish(next);
-				log.debug("Passed commit to " + commitLink);
+				propagate(event, response);
+			}
+			else {
+				//this was the last component
+				endTxn(event.getTxnId(), true);
 			}
 		} catch (Exception e) {
 			if (StringUtils.hasText(getRollbackLink())) {
@@ -55,11 +64,18 @@ class CommitProcessor extends RollbackProcessor {
 			throw e;
 		}
 	}
+	private boolean initialStep;
+	/**
+	 * 
+	 */
+	public void setInitialComponent() {
+		initialStep = true;
+	}
 	@Override
 	EventRecorder eventRecorder() {
 		return recorder;
 	}
 	@Autowired
-	@Qualifier(ComponentManager.COMMIT_RECORDER_BEAN_NAME)
+	@Qualifier(ServiceManager.COMMIT_RECORDER_BEAN_NAME)
 	private EventRecorder recorder;
 }

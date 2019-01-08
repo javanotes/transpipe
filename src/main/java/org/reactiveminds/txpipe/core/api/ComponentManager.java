@@ -3,23 +3,28 @@ package org.reactiveminds.txpipe.core.api;
 import org.reactiveminds.txpipe.core.PipelineDef;
 
 public interface ComponentManager {
-
 	/**
-	 * Start a new transaction component
-	 * @param defn
+	 * Add a new component (or replace if present) to the registry
+	 * @param component
 	 */
-	void registerPipeline(PipelineDef defn);
-
+	void add(PipelineDef pipeline);
 	/**
-	 * Invoke a new transaction pipeline. This is the service method to be invoked from REST endpoints
-	 * @param requestJson
-	 * @param componentId The first component to be triggered
-	 * @return the transaction id
+	 * If the component already exists
+	 * @param componentId
+	 * @return
 	 */
-	String invokePipeline(String requestJson, String pipelineId) throws IllegalArgumentException;
-
-	String ROLLBACK_PROCESSOR_BEAN_NAME = "rollbackProcessor";
-	String COMMIT_PROCESSOR_BEAN_NAME = "commitProcessor";
-	String ROLLBACK_RECORDER_BEAN_NAME = "rollbackRecorder";
-	String COMMIT_RECORDER_BEAN_NAME = "commitRecorder";
+	boolean contains(String pipelineId);
+	/**
+	 * Gets the corresponding component
+	 * @param componentId
+	 * @return
+	 */
+	PipelineDef get(String pipelineId);
+	/**
+	 * Get the source queue for triggering the pipeline
+	 * @param componentId
+	 * @return
+	 */
+	String getSource(String pipelineId);
+	
 }

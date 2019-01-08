@@ -1,15 +1,22 @@
 package org.reactiveminds.txpipe.core.broker;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.admin.ListConsumerGroupOffsetsResult;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.reactiveminds.txpipe.core.broker.PartitionAwareMessageListenerContainer.PartitionListener;
+import org.reactiveminds.txpipe.err.BrokerException;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -28,7 +35,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @EnableConfigurationProperties(KafkaProperties.class)
-class KafkaConfiguration {
+class KafkaConfiguration implements KafkaAdminSupport {
 
 	private final KafkaProperties properties;
 	
@@ -36,7 +43,48 @@ class KafkaConfiguration {
 		super();
 		this.properties = properties;
 	}
-
+	
+	private static class ConsumerOffsetWrapper{
+		private Map<String, Set<String>> unwrapped = new HashMap<>();
+		public void add(ListConsumerGroupOffsetsResult groupOff, String group) {
+			try 
+			{
+				Set<String> topics = groupOff.partitionsToOffsetAndMetadata().get()
+				.keySet().stream().map(t -> t.topic()).collect(Collectors.toSet());
+				
+				topics.forEach(t -> {
+					if(!unwrapped.containsKey(t))
+						unwrapped.put(t, new HashSet<>());
+					
+					unwrapped.get(t).add(group);
+				});
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			} catch (ExecutionException e) {
+				throw new BrokerException("While invoking partitionsToOffsetAndMetadata", e);
+			}
+		}
+	}
+	/* (non-Javadoc)
+	 * @see org.reactiveminds.txpipe.core.broker.KafkaAdminSupport#listConsumers(java.lang.String)
+	 */
+	@Override
+	public Set<String> listConsumers(String topic) {
+		try 
+		{
+			ConsumerOffsetWrapper wrapper = new ConsumerOffsetWrapper();
+			admin().listConsumerGroups().all().get()
+			.forEach(c -> wrapper.add(admin().listConsumerGroupOffsets(c.groupId()), c.groupId()));
+			
+			return wrapper.unwrapped.containsKey(topic) ? wrapper.unwrapped.get(topic) : Collections.emptySet();
+			
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		} catch (ExecutionException e) {
+			throw new BrokerException("While invoking listConsumerGroups", e);
+		}
+		return Collections.emptySet();
+	}
 	@Bean
     public ProducerFactory<String, String> producerFactory() {
         Map<String, Object> configProps = new HashMap<>();

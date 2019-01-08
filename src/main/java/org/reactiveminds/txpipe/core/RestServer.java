@@ -7,7 +7,7 @@ import static spark.Spark.stop;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 
-import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 class RestServer {
 	private static final Logger log = LoggerFactory.getLogger(RestServer.class);
 	@Autowired
-	ComponentManager manager;
+	ServiceManager manager;
 	@Value("${txpipe.rest.maxThreads:4}")
 	private int maxThreads;
 	@Value("${txpipe.rest.minThreads:1}")

@@ -2,18 +2,18 @@ package org.reactiveminds.txpipe.core;
 
 import javax.annotation.PostConstruct;
 
-import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.Publisher;
-import org.reactiveminds.txpipe.core.api.RegistryService;
+import org.reactiveminds.txpipe.core.api.ComponentManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.Assert;
 
-class DefaultComponentManager implements ComponentManager{
+class DefaultServiceManager implements ServiceManager{
 
 	@Autowired
 	Publisher publisher;
 	@Autowired
-	RegistryService registry;
+	ComponentManager registry;
 	
 	/**
 	 * 

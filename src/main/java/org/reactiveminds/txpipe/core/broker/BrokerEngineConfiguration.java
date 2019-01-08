@@ -1,7 +1,7 @@
 package org.reactiveminds.txpipe.core.broker;
 
+import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
-import org.reactiveminds.txpipe.core.api.RegistryService;
 import org.reactiveminds.txpipe.core.api.Subscriber;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Bean;
@@ -15,22 +15,22 @@ import org.springframework.context.annotation.Scope;
 public class BrokerEngineConfiguration {
 
 	@Bean
-	public RegistryService componentRegistry() {
-		return new RegistryServiceImpl();
+	public ComponentManager componentRegistry() {
+		return new DefaultComponentManager();
 	}
 	@Bean
 	public KafkaPublisher publisher() {
 		return new KafkaPublisher();
 	}
 	
-	@Bean(ComponentManager.COMMIT_PROCESSOR_BEAN_NAME)
+	@Bean(ServiceManager.COMMIT_PROCESSOR_BEAN_NAME)
 	@Scope(scopeName = ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 	@Lazy
 	public Subscriber commitProcessor(String queueName) {
 		return new CommitProcessor(queueName);
 	}
 	
-	@Bean(ComponentManager.ROLLBACK_PROCESSOR_BEAN_NAME)
+	@Bean(ServiceManager.ROLLBACK_PROCESSOR_BEAN_NAME)
 	@Scope(scopeName = ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 	@Lazy
 	public Subscriber rollbackProcessor(String queueName) {

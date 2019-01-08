@@ -23,7 +23,10 @@ repositories {
 
 dependencies {
     implementation('org.springframework.boot:spring-boot-starter')
-    implementation('org.springframework.kafka:spring-kafka')
+    implementation('org.springframework.kafka:spring-kafka'){
+    	exclude group: 'org.apache.kafka', module: 'kafka-clients'
+    }
+    implementation group: 'org.apache.kafka', name: 'kafka-clients', version: '2.1.0'
     implementation('com.sparkjava:spark-core:2.7.2')
     implementation group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.9.7'
     testImplementation('org.springframework.boot:spring-boot-starter-test')

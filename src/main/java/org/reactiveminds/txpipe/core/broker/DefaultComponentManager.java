@@ -18,8 +18,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.reactiveminds.txpipe.api.TransactionService;
 import org.reactiveminds.txpipe.core.ComponentDef;
 import org.reactiveminds.txpipe.core.PipelineDef;
+import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
-import org.reactiveminds.txpipe.core.api.RegistryService;
 import org.reactiveminds.txpipe.core.api.Subscriber;
 import org.reactiveminds.txpipe.err.ConfigurationException;
 import org.reactiveminds.txpipe.utils.JsonMapper;
@@ -35,9 +35,9 @@ import org.springframework.kafka.listener.ErrorHandler;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.util.StringUtils;
 
-class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareMessageListener<String,String> {
+class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerAwareMessageListener<String,String> {
 
-	static final Logger log = LoggerFactory.getLogger("RegistryServiceImpl");
+	static final Logger log = LoggerFactory.getLogger("ComponentManager");
 	@Autowired
 	BeanFactory beans;
 	@Autowired
@@ -84,6 +84,8 @@ class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareM
 		
 		register.values().forEach(p -> startPipeline(p));
 	}
+	@Autowired
+	KafkaAdminSupport adminSupport;
 	/**
 	 * Load all {@link PipelineDef} saved in Kafka topic as edit log.
 	 * @author Sutanu_Dalui
@@ -107,6 +109,7 @@ class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareM
 		@Override
 		public void run() {
 			KafkaTopicIterator iter = null;
+			//log.info("Consumers for " + queryTopic + " - " + adminSupport.listConsumers(queryTopic));
 			try 
 			{
 				iter = beans.getBean(KafkaTopicIterator.class, queryTopic);
@@ -213,7 +216,7 @@ class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareM
 		return beanFactory.containsBean(bean) && beanFactory.isTypeMatch(bean, TransactionService.class);
 	}
 	private void startComponent(ComponentDef defn, String pipe) {
-		if(isTxnBeanExists(defn.getComponentId())/* && startedComponents.putIfAbsent(defn.getComponentId(), true) == null*/) {
+		if(isTxnBeanExists(defn.getComponentId())) {
 			startConsumers(defn, pipe);
 		}
 		else {
@@ -228,15 +231,17 @@ class RegistryServiceImpl implements RegistryService,AcknowledgingConsumerAwareM
 	 */
 	private void startConsumers(ComponentDef defn, String pipe) {
 		
-		Subscriber commitSub = (Subscriber) beanFactory.getBean(ComponentManager.COMMIT_PROCESSOR_BEAN_NAME, defn.getCommitQueue());
+		Subscriber commitSub = (Subscriber) beanFactory.getBean(ServiceManager.COMMIT_PROCESSOR_BEAN_NAME, defn.getCommitQueue());
 		commitSub.setCommitLink(defn.getCommitQueueNext());
 		commitSub.setRollbackLink(defn.getRollbackQueuePrev());
 		commitSub.setComponentId(defn.getComponentId());
 		commitSub.setPipelineId(pipe);
-		
+		if(StringUtils.isEmpty(defn.getRollbackQueuePrev())){
+			((CommitProcessor) commitSub).setInitialComponent();
+		}
 		Subscriber rollbackSub = null;
 		if(StringUtils.hasText(defn.getRollbackQueue())) {
-			rollbackSub = (Subscriber) beanFactory.getBean(ComponentManager.ROLLBACK_PROCESSOR_BEAN_NAME, defn.getRollbackQueue());
+			rollbackSub = (Subscriber) beanFactory.getBean(ServiceManager.ROLLBACK_PROCESSOR_BEAN_NAME, defn.getRollbackQueue());
 			rollbackSub.setRollbackLink(defn.getRollbackQueuePrev());
 			rollbackSub.setComponentId(defn.getComponentId());
 			rollbackSub.setPipelineId(pipe);

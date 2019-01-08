@@ -5,7 +5,7 @@ import org.reactiveminds.txpipe.api.EventRecord;
 import org.reactiveminds.txpipe.api.EventRecorder;
 import org.reactiveminds.txpipe.api.TransactionService;
 import org.reactiveminds.txpipe.api.EventRecorder.CommitEventRecorder;
-import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.err.CommitFailedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,7 +85,7 @@ public class Config {
 		};
 	}
 	
-	@Bean(ComponentManager.COMMIT_RECORDER_BEAN_NAME)
+	@Bean(ServiceManager.COMMIT_RECORDER_BEAN_NAME)
 	EventRecorder commitRecorder() {
 		return new CommitEventRecorder() {
 			

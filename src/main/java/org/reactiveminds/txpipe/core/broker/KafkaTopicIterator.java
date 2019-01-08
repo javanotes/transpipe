@@ -1,6 +1,7 @@
 package org.reactiveminds.txpipe.core.broker;
 
 import java.io.Closeable;
+import java.time.Duration;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -57,7 +58,7 @@ class KafkaTopicIterator implements Runnable, Iterator<List<String>>, Closeable{
 			initRan = true;
 		} 
 		catch (Exception e) {
-			RegistryServiceImpl.log.error("Loading of existing definitions failed on startup!", e);
+			DefaultComponentManager.log.error("Loading of existing definitions failed on startup!", e);
 		}
 		
 	}
@@ -84,7 +85,7 @@ class KafkaTopicIterator implements Runnable, Iterator<List<String>>, Closeable{
 		if(!initRan)
 			throw new IllegalStateException("This iterator has to be run() once, before attempting to iterate");
 		if (hasNext()) {
-			ConsumerRecords<String, String> records = consumer.poll(10);
+			ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
 			consumer.commitSync();
 			return StreamSupport.stream(records.spliterator(), !preserveOrder).filter(c -> queryKeyLike.test(c.key()))
 					.map(c -> c.value()).collect(Collectors.toList());

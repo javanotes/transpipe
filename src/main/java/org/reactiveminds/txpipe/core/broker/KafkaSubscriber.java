@@ -11,6 +11,7 @@ import org.reactiveminds.txpipe.api.EventRecorder;
 import org.reactiveminds.txpipe.api.TransactionService;
 import org.reactiveminds.txpipe.core.Event;
 import org.reactiveminds.txpipe.core.api.Subscriber;
+import org.reactiveminds.txpipe.core.api.TransactionMarker;
 import org.reactiveminds.txpipe.err.CommitFailedException;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
@@ -25,23 +26,24 @@ import org.springframework.kafka.support.Acknowledgment;
 abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareMessageListener<String,String> {
 
 	static final Logger PLOG = LoggerFactory.getLogger("KafkaSubscriber");
-	private static final Logger CLOG = LoggerFactory.getLogger("ContainerErrHandler");
+	private static final Logger CLOG = LoggerFactory.getLogger("CommitFailureLogger");
+	private static final Logger OLOG = LoggerFactory.getLogger("ContainerErrLogger");
 	private final class ContainerErrHandler implements ErrorHandler {
 		
 		@Override
 		public void handle(Exception t, ConsumerRecord<?, ?> data) {
 			if (t instanceof CommitFailedException) {
-				CLOG.warn("Commit failure from topic " + data.topic() + ", on key [" + data.key() + "] :: " + t.getMessage());
+				CLOG.warn("From " + data.topic() + ", on key [" + data.key() + "] :: " + t.getMessage());
 				CLOG.debug(""+data.value(), t);
 			} 
 			else if (t instanceof UncheckedIOException) {
-				CLOG.error("Json parse exception on consuming message from topic " + data.topic() + ", on key [" + data.key() + "] :: " + t.getMessage());
-				CLOG.debug(""+data.value(), t);
+				OLOG.error("Json parse exception on consuming message from topic " + data.topic() + ", on key [" + data.key() + "] :: " + t.getMessage());
+				OLOG.debug(""+data.value(), t);
 			} 
 			else {
-				CLOG.error("Exception on consuming message from topic " + data.topic() + "[" + data.partition()
+				OLOG.warn("Unhandled exception from topic " + data.topic() + "[" + data.partition()
 						+ "] at offset " + data.offset() + ". Key - " + data.key(), t);
-				CLOG.debug("Error in consumed message : " + data.value());
+				OLOG.debug("Error in consumed message : " + data.value());
 			}
 			if (recordEventAsync) {
 				eventThread.submit(new EventRecorderRunner(data, t));
@@ -152,6 +154,14 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	@Override
 	public void setComponentId(String componentId) {
 		this.componentId = componentId;
+	}
+	@Autowired
+	TransactionMarker marker;
+	void beginTxn(String txnId) {
+		marker.begin(txnId);
+	}
+	void endTxn(String txnId, boolean success) {
+		marker.end(txnId, success);
 	}
 	/**
 	 * The core process method that should be executed. 

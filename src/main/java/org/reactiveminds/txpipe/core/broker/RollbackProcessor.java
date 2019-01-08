@@ -2,7 +2,7 @@ package org.reactiveminds.txpipe.core.broker;
 
 import org.reactiveminds.txpipe.api.EventRecorder;
 import org.reactiveminds.txpipe.core.Event;
-import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.Publisher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -29,7 +29,11 @@ class RollbackProcessor extends KafkaSubscriber {
 	public RollbackProcessor(String queueName) {
 		super(queueName);
 	}
-	
+	private void propagate(Event event) {
+		Event rollback = event.copy();
+		rollback.setDestination(rollbackLink);
+		publisher.publish(rollback);
+	}
 	@Override
 	public void consume(Event event) {
 		try {
@@ -39,9 +43,11 @@ class RollbackProcessor extends KafkaSubscriber {
 		}
 		finally {
 			if (StringUtils.hasText(rollbackLink)) {
-				Event rollback = event.copy();
-				rollback.setDestination(rollbackLink);
-				publisher.publish(rollback);
+				propagate(event);
+			}
+			else {
+				//first component reached
+				endTxn(event.getTxnId(), false);
 			}
 		}
 		
@@ -55,6 +61,6 @@ class RollbackProcessor extends KafkaSubscriber {
 		return recorder;
 	}
 	@Autowired
-	@Qualifier(ComponentManager.ROLLBACK_RECORDER_BEAN_NAME)
+	@Qualifier(ServiceManager.ROLLBACK_RECORDER_BEAN_NAME)
 	private EventRecorder recorder;
 }
