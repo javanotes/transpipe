@@ -4,6 +4,9 @@ import static spark.Spark.post;
 import static spark.Spark.put;
 import static spark.Spark.stop;
 
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 
@@ -50,6 +53,32 @@ class RestServer {
 				log.debug("", e);
 				res.status(400);
 				return e.getMessage();
+			}
+			catch (Exception e) {
+				log.error("Unexpected error: ", e);
+				res.status(500);
+				return "Server Error!";
+			}
+		});
+		
+		post("/txnpipe/:pipeline/invoke", (req, res) -> {
+			try {
+				String componentId = req.params(":pipeline");
+				String request = req.body();
+				String id = manager.executePipeline(request, componentId, 10, TimeUnit.SECONDS);
+				res.status(200);
+				return id;
+			} catch (IllegalArgumentException e) {
+				log.warn("Request error> "+e.getMessage());
+				log.debug("", e);
+				res.status(400);
+				return e.getMessage();
+			}
+			catch (TimeoutException e) {
+				log.warn(e.getMessage());
+				log.debug("", e);
+				res.status(500);
+				return "Timeout reached";
 			}
 			catch (Exception e) {
 				log.error("Unexpected error: ", e);

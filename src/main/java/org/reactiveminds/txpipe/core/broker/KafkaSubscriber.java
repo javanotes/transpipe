@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.AcknowledgingConsumerAwareMessageListener;
 import org.springframework.kafka.listener.ErrorHandler;
 import org.springframework.kafka.support.Acknowledgment;
@@ -109,6 +110,8 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	public void setPipelineId(String pipeline) {
 		this.pipeline = pipeline;
 	}
+	@Autowired
+	KafkaTemplate<String, String> pub;
 	
 	private ExecutorService eventThread;
 	@Override
@@ -162,6 +165,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	}
 	void endTxn(String txnId, boolean success) {
 		marker.end(txnId, success);
+		
 	}
 	/**
 	 * The core process method that should be executed. 

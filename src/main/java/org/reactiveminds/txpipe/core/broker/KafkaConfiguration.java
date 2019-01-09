@@ -11,12 +11,14 @@ import java.util.stream.Collectors;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.ListConsumerGroupOffsetsResult;
+import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.reactiveminds.txpipe.core.broker.PartitionAwareMessageListenerContainer.PartitionListener;
 import org.reactiveminds.txpipe.err.BrokerException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -26,11 +28,12 @@ import org.springframework.context.annotation.Scope;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.listener.AbstractMessageListenerContainer.AckMode;
 import org.springframework.kafka.listener.ErrorHandler;
+import org.springframework.kafka.listener.KafkaMessageListenerContainer;
 import org.springframework.kafka.listener.config.ContainerProperties;
+import org.springframework.kafka.requestreply.ReplyingKafkaTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -38,6 +41,8 @@ import org.springframework.stereotype.Component;
 class KafkaConfiguration implements KafkaAdminSupport {
 
 	private final KafkaProperties properties;
+	@Value("${txpipe.instanceId}")
+	private String groupId;
 	
 	public KafkaConfiguration(KafkaProperties properties) {
 		super();
@@ -108,9 +113,18 @@ class KafkaConfiguration implements KafkaAdminSupport {
 		
 		return AdminClient.create(prop);
 	}
+	
+	static final String TXPIPE_REPLY_QUEUE = "txnReply";
 	@Bean
-    public KafkaTemplate<String, String> kafkaTemplate() {
-        return new KafkaTemplate<>(producerFactory());
+    NewTopic topic() {
+        return new NewTopic(TXPIPE_REPLY_QUEUE, 8, (short) 1);
+    }
+	@Bean
+    public ReplyingKafkaTemplate<String, String, String> txnRequestReplyTemplate() {
+		ContainerProperties containerProperties = new ContainerProperties(TXPIPE_REPLY_QUEUE);
+		containerProperties.setGroupId(groupId);
+		KafkaMessageListenerContainer<String, String> container = new KafkaMessageListenerContainer<>(consumerFactory(), containerProperties);
+        return new FallbackReplyingTemplate(producerFactory(), container);
     }
 	
 	@Bean

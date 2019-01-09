@@ -1,5 +1,8 @@
 package org.reactiveminds.txpipe.core.api;
 
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 import org.reactiveminds.txpipe.core.PipelineDef;
 
 public interface ServiceManager {
@@ -17,6 +20,16 @@ public interface ServiceManager {
 	 * @return the transaction id
 	 */
 	String invokePipeline(String requestJson, String pipelineId) throws IllegalArgumentException;
+	/**
+	 * Invoke a new transaction pipeline and wait for results for maxAwait time.
+	 * @param requestJson
+	 * @param pipelineId
+	 * @param maxAwait
+	 * @param unit
+	 * @return 
+	 * @throws TimeoutException
+	 */
+	String executePipeline(String requestJson, String pipelineId, long maxAwait, TimeUnit unit) throws TimeoutException;
 
 	String ROLLBACK_PROCESSOR_BEAN_NAME = "rollbackProcessor";
 	String COMMIT_PROCESSOR_BEAN_NAME = "commitProcessor";

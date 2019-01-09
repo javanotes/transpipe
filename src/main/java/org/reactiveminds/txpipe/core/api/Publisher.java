@@ -1,7 +1,9 @@
 package org.reactiveminds.txpipe.core.api;
 
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
+import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.core.Event;
 
 public interface Publisher {
@@ -14,7 +16,16 @@ public interface Publisher {
 	 * @param txnId
 	 * @return
 	 */
-	<T> String publish(String payload, String queue, String pipeline);
+	String publish(String payload, String queue, String pipeline);
+	/**
+	 * Execute in synchronous mode.
+	 * @param payload
+	 * @param queue
+	 * @param pipeline
+	 * @param wait
+	 * @param unit
+	 */
+	TransactionResult execute(String payload, String queue, String pipeline, long wait, TimeUnit unit);
 
 	/**
 	 * 

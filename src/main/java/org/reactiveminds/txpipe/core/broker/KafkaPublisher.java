@@ -6,21 +6,26 @@ import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.ListTopicsOptions;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.TopicDescription;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.utils.Utils;
+import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.core.Event;
 import org.reactiveminds.txpipe.core.api.Publisher;
+import org.reactiveminds.txpipe.err.BrokerException;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.reactiveminds.txpipe.utils.UUIDs;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataAccessException;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.requestreply.ReplyingKafkaTemplate;
+import org.springframework.kafka.requestreply.RequestReplyFuture;
 import org.springframework.util.Assert;
 
 public class KafkaPublisher implements Publisher {
@@ -38,11 +43,14 @@ public class KafkaPublisher implements Publisher {
 	@Autowired
 	KafkaTemplate<String, String> kafka;
 	@Autowired
+	ReplyingKafkaTemplate<String, String, String> replyKafka;
+	
+	@Autowired
 	AdminClient admin;
 	private JsonMapper mapper = new JsonMapper();
 	
 	@Override
-	public <T> String publish(String message, String queue, String pipeline) {
+	public String publish(String message, String queue, String pipeline) {
 		Event event = makeEvent(message, queue);
 		event.setPipeline(pipeline);
 		return publish(event);
@@ -65,7 +73,7 @@ public class KafkaPublisher implements Publisher {
 		Assert.hasText(event.getTxnId(), "Event txnId not set "+ event);
 		return event.getPipeline()+KEY_SEP+event.getTxnId();
 	}
-	@SuppressWarnings("serial")
+	
 	@Override
 	public String publish(Event event) {
 		try {
@@ -74,7 +82,7 @@ public class KafkaPublisher implements Publisher {
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 		} catch (ExecutionException e) {
-			throw new DataAccessException("Unable to publish to Kafka topic", e.getCause()) {};
+			throw new BrokerException("Unable to publish to Kafka topic", e.getCause());
 		}
 		return null;
 	}
@@ -118,7 +126,7 @@ public class KafkaPublisher implements Publisher {
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
 			} catch (ExecutionException e) {
-				log.error("Topic creation unsuccessful!", e.getCause());
+				throw new BrokerException("Topic creation unsuccessful", e.getCause());
 			}
 		}
 		
@@ -139,8 +147,44 @@ public class KafkaPublisher implements Publisher {
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 		} catch (ExecutionException e) {
-			throw new RuntimeException(e.getCause());
+			throw new BrokerException("Unable to fetch topic partition", e.getCause());
 		}
 		return -1;
+	}
+	
+	private String sendAndReceive(Event event, TimeUnit unit, long timeout) throws TimeoutException {
+		try {
+			RequestReplyFuture<String, String, String> fut = replyKafka.sendAndReceive(new ProducerRecord<String, String>(event.getDestination(), nextKey(event), mapper.toJson(event)));
+			return fut.get(timeout, unit).value();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		} catch (ExecutionException e) {
+			throw new BrokerException("Unable to publish to Kafka topic", e.getCause());
+		} catch (TimeoutException e) {
+			throw e;
+		}
+		return null;
+	}
+	@Override
+	public TransactionResult execute(String payload, String queue, String pipeline, long wait, TimeUnit unit) {
+		throw new UnsupportedOperationException("");
+		/*Event event = makeEvent(payload, queue);
+		event.setPipeline(pipeline);
+		TransactionResult r = TransactionResult.ERROR;
+		r.setTxnId(event.getTxnId());
+		try {
+			String res = sendAndReceive(event, unit, wait);
+			r = TransactionResult.valueOf(res);
+			r.setTxnId(event.getTxnId());
+		} catch (TimeoutException e) {
+			log.error(e.getMessage());
+			log.debug("", e);
+			r = TransactionResult.TIMEOUT;
+			r.setTxnId(event.getTxnId());
+		}
+		catch (Exception e) {
+			log.error("", e);
+		}
+		return r;*/
 	}
 }
