@@ -33,7 +33,6 @@ import org.springframework.kafka.listener.AbstractMessageListenerContainer.AckMo
 import org.springframework.kafka.listener.ErrorHandler;
 import org.springframework.kafka.listener.KafkaMessageListenerContainer;
 import org.springframework.kafka.listener.config.ContainerProperties;
-import org.springframework.kafka.requestreply.ReplyingKafkaTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -113,18 +112,20 @@ class KafkaConfiguration implements KafkaAdminSupport {
 		
 		return AdminClient.create(prop);
 	}
-	
+	/**
+	 * 
+	 */
 	static final String TXPIPE_REPLY_QUEUE = "txnReply";
 	@Bean
     NewTopic topic() {
         return new NewTopic(TXPIPE_REPLY_QUEUE, 8, (short) 1);
     }
 	@Bean
-    public ReplyingKafkaTemplate<String, String, String> txnRequestReplyTemplate() {
+    public RequestReplyKafkaTemplate txnRequestReplyTemplate() {
 		ContainerProperties containerProperties = new ContainerProperties(TXPIPE_REPLY_QUEUE);
 		containerProperties.setGroupId(groupId);
 		KafkaMessageListenerContainer<String, String> container = new KafkaMessageListenerContainer<>(consumerFactory(), containerProperties);
-        return new FallbackReplyingTemplate(producerFactory(), container);
+        return new RequestReplyKafkaTemplate(producerFactory(), container);
     }
 	
 	@Bean

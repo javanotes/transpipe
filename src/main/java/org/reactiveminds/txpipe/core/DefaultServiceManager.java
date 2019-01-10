@@ -23,7 +23,7 @@ class DefaultServiceManager implements ServiceManager{
 	
 	private String getDestination(String pipelineId) {
 		if(!registry.contains(pipelineId))
-			throw new IllegalArgumentException("Transaction pipeline '" +pipelineId+"' is not registered. If request has been already sent, please try after sometime ..");
+			throw new IllegalArgumentException("Transaction pipeline '" +pipelineId+"' is not registered. If request has been already sent, please try after sometime");
 		String queue = registry.getSource(pipelineId);
 		Assert.hasText(queue, "Trigger topic not set for pipeline - " + pipelineId);
 		

@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.reactiveminds.txpipe.api.EventRecord;
 import org.reactiveminds.txpipe.api.EventRecorder;
+import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.api.TransactionService;
 import org.reactiveminds.txpipe.core.Event;
 import org.reactiveminds.txpipe.core.api.Subscriber;
@@ -160,12 +161,12 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	}
 	@Autowired
 	TransactionMarker marker;
-	void beginTxn(String txnId) {
+	final void beginTxn(String txnId) {
 		marker.begin(txnId);
 	}
-	void endTxn(String txnId, boolean success) {
+	final void endTxn(String txnId, boolean success) {
 		marker.end(txnId, success);
-		
+		pub.send(KafkaConfiguration.TXPIPE_REPLY_QUEUE, txnId, success ? TransactionResult.COMMIT.name() : TransactionResult.ROLLBACK.name());
 	}
 	/**
 	 * The core process method that should be executed. 

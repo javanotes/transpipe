@@ -38,7 +38,7 @@ class RestServer {
 		stop();
 	}
 	private void mapEndpointUrls() {
-		/*
+		/**
 		 * run transaction
 		 */
 		post("/txnpipe/:pipeline/run", (req, res) -> {
@@ -46,47 +46,55 @@ class RestServer {
 				String componentId = req.params(":pipeline");
 				String request = req.body();
 				String id = manager.invokePipeline(request, componentId);
-				res.status(201);
+				res.status(202);
 				return id;
 			} catch (IllegalArgumentException e) {
-				log.warn("Request error> "+e.getMessage());
+				log.error("Request error> "+e.getMessage());
 				log.debug("", e);
 				res.status(400);
 				return e.getMessage();
 			}
 			catch (Exception e) {
 				log.error("Unexpected error: ", e);
-				res.status(500);
-				return "Server Error!";
+				res.status(503);
+				return "Try later. If issue persists, contact support";
 			}
 		});
-		
+		/**
+		 * Run transaction and wait for result
+		 */
 		post("/txnpipe/:pipeline/invoke", (req, res) -> {
 			try {
 				String componentId = req.params(":pipeline");
 				String request = req.body();
-				String id = manager.executePipeline(request, componentId, 10, TimeUnit.SECONDS);
+				long wait = 10;
+				try {
+					wait = Long.parseLong(req.queryParamOrDefault("wait", "10"));
+				} catch (NumberFormatException e) {
+					wait = 10;
+				}
+				String id = manager.executePipeline(request, componentId, wait, TimeUnit.SECONDS);
 				res.status(200);
 				return id;
 			} catch (IllegalArgumentException e) {
-				log.warn("Request error> "+e.getMessage());
+				log.error("Request error> "+e.getMessage());
 				log.debug("", e);
 				res.status(400);
 				return e.getMessage();
 			}
 			catch (TimeoutException e) {
-				log.warn(e.getMessage());
+				log.error(e.getMessage());
 				log.debug("", e);
-				res.status(500);
-				return "Timeout reached";
+				res.status(408);
+				return "Request timed out";
 			}
 			catch (Exception e) {
 				log.error("Unexpected error: ", e);
-				res.status(500);
-				return "Server Error!";
+				res.status(503);
+				return "Try later. If issue persists, contact support";
 			}
 		});
-		/*
+		/**
 		 * configure new transaction
 		 */
 		put("/txnpipe/:pipeline", (req, res) -> {
@@ -101,15 +109,15 @@ class RestServer {
 				res.status(201);
 				return "OK";
 			} catch (IllegalArgumentException e) {
-				log.warn("Request error> "+e.getMessage());
+				log.error("Request error> "+e.getMessage());
 				log.debug("", e);
 				res.status(400);
 				return e.getMessage();
 			}
 			catch (Exception e) {
 				log.error("Unexpected error: ", e);
-				res.status(500);
-				return "Server Error!";
+				res.status(503);
+				return "Try later. If issue persists, contact support";
 			}
 		});
 		

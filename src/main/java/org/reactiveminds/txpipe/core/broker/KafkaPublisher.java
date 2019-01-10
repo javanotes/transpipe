@@ -12,7 +12,6 @@ import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.ListTopicsOptions;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.TopicDescription;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.utils.Utils;
 import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.core.Event;
@@ -23,8 +22,6 @@ import org.reactiveminds.txpipe.utils.UUIDs;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.requestreply.ReplyingKafkaTemplate;
 import org.springframework.kafka.requestreply.RequestReplyFuture;
 import org.springframework.util.Assert;
 
@@ -40,10 +37,9 @@ public class KafkaPublisher implements Publisher {
 	}
 	
 	private static final Logger log = LoggerFactory.getLogger(KafkaPublisher.class);
+	
 	@Autowired
-	KafkaTemplate<String, String> kafka;
-	@Autowired
-	ReplyingKafkaTemplate<String, String, String> replyKafka;
+	RequestReplyKafkaTemplate replyKafka;
 	
 	@Autowired
 	AdminClient admin;
@@ -77,7 +73,7 @@ public class KafkaPublisher implements Publisher {
 	@Override
 	public String publish(Event event) {
 		try {
-			kafka.send(event.getDestination(), nextKey(event), mapper.toJson(event)).get();
+			replyKafka.send(event.getDestination(), nextKey(event), mapper.toJson(event)).get();
 			return event.getTxnId();
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
@@ -96,7 +92,7 @@ public class KafkaPublisher implements Publisher {
 
 	@Override
 	public Future<?> publishAsync(Event event) {
-		return kafka.send(event.getDestination(), nextKey(event), mapper.toJson(event));
+		return replyKafka.send(event.getDestination(), nextKey(event), mapper.toJson(event));
 	}
 	private boolean isTopicExists(String topic) {
 		ListTopicsOptions l = new ListTopicsOptions();
@@ -154,7 +150,8 @@ public class KafkaPublisher implements Publisher {
 	
 	private String sendAndReceive(Event event, TimeUnit unit, long timeout) throws TimeoutException {
 		try {
-			RequestReplyFuture<String, String, String> fut = replyKafka.sendAndReceive(new ProducerRecord<String, String>(event.getDestination(), nextKey(event), mapper.toJson(event)));
+			RequestReplyFuture<String, String, String> fut = replyKafka.takePromise(event.getTxnId());
+			publish(event);
 			return fut.get(timeout, unit).value();
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
@@ -167,8 +164,7 @@ public class KafkaPublisher implements Publisher {
 	}
 	@Override
 	public TransactionResult execute(String payload, String queue, String pipeline, long wait, TimeUnit unit) {
-		throw new UnsupportedOperationException("");
-		/*Event event = makeEvent(payload, queue);
+		Event event = makeEvent(payload, queue);
 		event.setPipeline(pipeline);
 		TransactionResult r = TransactionResult.ERROR;
 		r.setTxnId(event.getTxnId());
@@ -176,7 +172,8 @@ public class KafkaPublisher implements Publisher {
 			String res = sendAndReceive(event, unit, wait);
 			r = TransactionResult.valueOf(res);
 			r.setTxnId(event.getTxnId());
-		} catch (TimeoutException e) {
+		} 
+		catch (TimeoutException e) {
 			log.error(e.getMessage());
 			log.debug("", e);
 			r = TransactionResult.TIMEOUT;
@@ -185,6 +182,6 @@ public class KafkaPublisher implements Publisher {
 		catch (Exception e) {
 			log.error("", e);
 		}
-		return r;*/
+		return r;
 	}
 }
