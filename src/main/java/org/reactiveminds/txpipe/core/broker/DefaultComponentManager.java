@@ -50,7 +50,6 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	KafkaPublisher pubAdmin;
 	
 	
-	private JsonMapper mapper = new JsonMapper();
 	@Value("${txpipe.broker.orchestrationTopic:managerTopic}") 
 	private String orchestrationTopic;
 	
@@ -71,6 +70,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		});
 		container.setupMessageListener(this);
 		container.start();
+		
 		log.info("Connecting to cluster with instanceId '"+groupId+"'. This can take some time ..");
 		
 		container.getPartitionListener().awaitOnReady(30, TimeUnit.SECONDS);
@@ -95,7 +95,6 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 
 		private final List<PipelineDef> allDefinitions = new ArrayList<>();
 		
-		private JsonMapper mapper = new JsonMapper();
 		private String queryTopic;
 		/**
 		 * 
@@ -116,7 +115,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 				iter.run();
 				allDefinitions.clear();
 				while(iter.hasNext()) {
-					List<PipelineDef> items = iter.next().stream().map(s -> mapper.toObject(s, PipelineDef.class)).collect(Collectors.toList());
+					List<PipelineDef> items = iter.next().stream().map(s -> JsonMapper.deserialize(s, PipelineDef.class)).collect(Collectors.toList());
 					allDefinitions.addAll(items);
 				}
 							
@@ -177,18 +176,15 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	}
 
 	private void broadcast(PipelineDef pipeline) {
-		kafkaTemplate.send(orchestrationTopic, mapper.toJson(pipeline));
+		kafkaTemplate.send(orchestrationTopic, JsonMapper.serialize(pipeline));
 	}
 
 	@Override
 	public void onMessage(ConsumerRecord<String, String> data, Acknowledgment acknowledgment, Consumer<?, ?> consumer) {
-		PipelineDef def = mapper.toObject(data.value(), PipelineDef.class);
+		PipelineDef def = JsonMapper.deserialize(data.value(), PipelineDef.class);
 		startThenPut(def);
 		acknowledgment.acknowledge();
 	}
-	
-	
-	//private ConcurrentMap<String, Boolean> startedComponents = new ConcurrentHashMap<>();
 	
 	@Value("${txpipe.broker.topicPartition:10}")
 	private int partition;

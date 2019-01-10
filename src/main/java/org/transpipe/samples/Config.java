@@ -1,11 +1,7 @@
 package org.transpipe.samples;
 
-import org.reactiveminds.txpipe.api.ClientConfiguration;
-import org.reactiveminds.txpipe.api.EventRecord;
-import org.reactiveminds.txpipe.api.EventRecorder;
 import org.reactiveminds.txpipe.api.TransactionService;
-import org.reactiveminds.txpipe.api.EventRecorder.CommitEventRecorder;
-import org.reactiveminds.txpipe.core.api.ServiceManager;
+import org.reactiveminds.txpipe.core.EngineConfiguration;
 import org.reactiveminds.txpipe.err.CommitFailedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,7 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
 @Configuration
-@Import(ClientConfiguration.class)
+@Import(EngineConfiguration.class)
 public class Config {
 
 	private static final Logger log = LoggerFactory.getLogger("TXNLOGGER");
@@ -85,14 +81,4 @@ public class Config {
 		};
 	}
 	
-	@Bean(ServiceManager.COMMIT_RECORDER_BEAN_NAME)
-	EventRecorder commitRecorder() {
-		return new CommitEventRecorder() {
-			
-			@Override
-			protected void onRecord(EventRecord record) {
-				eventLogger.info("Local implementation : " + record);
-			}
-		};
-	}
 }

@@ -1,4 +1,7 @@
 package org.reactiveminds.txpipe.api;
+
+import org.reactiveminds.txpipe.utils.JsonMapper;
+
 /**
  * Record of an event, as processed by the transaction pipeline.
  * @author Sutanu_Dalui
@@ -81,8 +84,6 @@ public class EventRecord {
 	private String errorDetail;
 	@Override
 	public String toString() {
-		return "EventRecord [topic=" + topic + ", partition=" + partition + ", offset=" + offset + ", timestamp="
-				+ timestamp + ", value=" + value + ", key=" + key + ", isRollback=" + isRollback + ", isError="
-				+ isError + ", errorDetail=" + errorDetail + "]";
+		return JsonMapper.serialize(this);
 	}
 }

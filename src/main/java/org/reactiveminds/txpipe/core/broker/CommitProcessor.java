@@ -1,12 +1,8 @@
 package org.reactiveminds.txpipe.core.broker;
 
-import org.reactiveminds.txpipe.api.EventRecorder;
 import org.reactiveminds.txpipe.core.Event;
-import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.util.StringUtils;
 
 class CommitProcessor extends RollbackProcessor {
@@ -71,11 +67,5 @@ class CommitProcessor extends RollbackProcessor {
 	public void setInitialComponent() {
 		initialStep = true;
 	}
-	@Override
-	EventRecorder eventRecorder() {
-		return recorder;
-	}
-	@Autowired
-	@Qualifier(ServiceManager.COMMIT_RECORDER_BEAN_NAME)
-	private EventRecorder recorder;
+	
 }

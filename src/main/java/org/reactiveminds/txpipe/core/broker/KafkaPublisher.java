@@ -43,7 +43,6 @@ public class KafkaPublisher implements Publisher {
 	
 	@Autowired
 	AdminClient admin;
-	private JsonMapper mapper = new JsonMapper();
 	
 	@Override
 	public String publish(String message, String queue, String pipeline) {
@@ -73,7 +72,7 @@ public class KafkaPublisher implements Publisher {
 	@Override
 	public String publish(Event event) {
 		try {
-			replyKafka.send(event.getDestination(), nextKey(event), mapper.toJson(event)).get();
+			replyKafka.send(event.getDestination(), nextKey(event), JsonMapper.serialize(event)).get();
 			return event.getTxnId();
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
@@ -92,7 +91,7 @@ public class KafkaPublisher implements Publisher {
 
 	@Override
 	public Future<?> publishAsync(Event event) {
-		return replyKafka.send(event.getDestination(), nextKey(event), mapper.toJson(event));
+		return replyKafka.send(event.getDestination(), nextKey(event), JsonMapper.serialize(event));
 	}
 	private boolean isTopicExists(String topic) {
 		ListTopicsOptions l = new ListTopicsOptions();

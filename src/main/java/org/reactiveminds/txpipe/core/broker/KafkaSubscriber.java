@@ -68,13 +68,14 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		}
 		private final ConsumerRecord<?, ?> data;
 		private final Exception isError;
+		
 		/**
 		 * record the event if needed for further tracing/analysis.
 		 * @param data
 		 * @param isError
 		 */
 		protected void recordEvent() {
-			if (eventRecorder() != null) {
+			if (eventRecorder != null) {
 				EventRecord record = new EventRecord(data.topic(), data.partition(), data.offset(), data.timestamp(),
 						data.key().toString());
 				record.setError(isError != null);
@@ -82,7 +83,8 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 					record.setErrorDetail(isError.getMessage());
 				}
 				record.setValue(data.value().toString());
-				eventRecorder().record(record);
+				record.setRollback(!isCommitMode);
+				eventRecorder.record(record);
 			}
 		}
 		@Override
@@ -105,6 +107,9 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	private PartitionAwareMessageListenerContainer container;
 	@Autowired
 	BeanFactory factory;
+	@Autowired
+	EventRecorder eventRecorder;
+	
 	protected boolean isCommitMode = false;
 	protected String pipeline;
 	@Override
@@ -122,6 +127,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		}
 		container = factory.getBean(PartitionAwareMessageListenerContainer.class, listeningTopic, getListenerId(), concurreny, new ContainerErrHandler());
 		container.setupMessageListener(this);
+		container.setBeanName(getListenerId());
 		container.start();
 		if (awaitConsumerRebalance) {
 			boolean done = container.getPartitionListener().awaitOnReady(awaitConsumerRebalanceMaxWait, TimeUnit.SECONDS);
@@ -134,7 +140,6 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	protected KafkaSubscriber(String topic) {
 		this.listeningTopic = topic;
 	}
-	private JsonMapper mapper = new JsonMapper();
 	@Override
 	public void stop() {
 		container.stop();
@@ -207,7 +212,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		}
 	}
 	private void doOnMessage(ConsumerRecord<String, String> data) {
-		Event event = mapper.toObject(data.value(), Event.class);
+		Event event = JsonMapper.deserialize(data.value(), Event.class);
 		consume(event);
 		if (recordEventAsync) {
 			eventThread.submit(new EventRecorderRunner(data, null));
@@ -215,10 +220,5 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		else
 			new EventRecorderRunner(data, null).run();
 	}
-	/**
-	 * Get an {@linkplain EventRecorder} instance.
-	 * @return
-	 */
-	abstract EventRecorder eventRecorder();
 	
 }

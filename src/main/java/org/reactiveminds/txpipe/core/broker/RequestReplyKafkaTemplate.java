@@ -61,8 +61,9 @@ class RequestReplyKafkaTemplate extends ReplyingKafkaTemplate<String, String, St
 		data.forEach(record -> {
 			RequestReplyFuture<String, String, String> future = this.futures.remove(record.key());
 			if (future == null) {
-				this.logger.error("No pending reply: " + record + " with correlationId: "
-						+ record.key() + ", perhaps timed out");
+				if(this.logger.isDebugEnabled()) {
+					this.logger.debug("No pending reply: " + record + " with correlationId: "+ record.key());
+				}
 			}
 			else {
 				if (this.logger.isDebugEnabled()) {

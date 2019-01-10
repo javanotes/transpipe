@@ -33,6 +33,5 @@ public interface ServiceManager {
 
 	String ROLLBACK_PROCESSOR_BEAN_NAME = "rollbackProcessor";
 	String COMMIT_PROCESSOR_BEAN_NAME = "commitProcessor";
-	String ROLLBACK_RECORDER_BEAN_NAME = "rollbackRecorder";
-	String COMMIT_RECORDER_BEAN_NAME = "commitRecorder";
+	
 }

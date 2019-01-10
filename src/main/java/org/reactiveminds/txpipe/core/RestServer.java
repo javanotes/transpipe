@@ -99,7 +99,7 @@ class RestServer {
 		 */
 		put("/txnpipe/:pipeline", (req, res) -> {
 			try {
-				String[] components = new JsonMapper().toObject(req.body(), String[].class);
+				String[] components = JsonMapper.deserialize(req.body(), String[].class);
 				PipelineDef request = new PipelineDef();
 				request.setPipelineId(req.params(":pipeline"));
 				for(String component : components) {

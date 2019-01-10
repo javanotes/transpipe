@@ -1,13 +1,20 @@
 package org.reactiveminds.txpipe.core;
 
+import org.reactiveminds.txpipe.api.EventRecorder;
 import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.TransactionMarker;
 import org.reactiveminds.txpipe.core.broker.BrokerEngineConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.stereotype.Component;
 
+/**
+ * The base {@linkplain Configuration} class to be imported in project starter configuration
+ * @author Sutanu_Dalui
+ *
+ */
 @Component
 @Import({BrokerEngineConfiguration.class})
 public class EngineConfiguration {
@@ -24,5 +31,9 @@ public class EngineConfiguration {
 	TransactionMarker transactionMarker() {
 		return new DefaultTransactionMarker();
 	}
-	
+	@ConditionalOnMissingBean
+	@Bean
+	EventRecorder eventRecorder() {
+		return new DefaultEventRecorder();
+	}
 }

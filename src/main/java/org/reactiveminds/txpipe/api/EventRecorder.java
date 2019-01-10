@@ -16,38 +16,4 @@ public interface EventRecorder {
 	 */
 	void record(EventRecord record);
 	Logger eventLogger = LoggerFactory.getLogger("EventLog");
-	
-	/**
-	 * Base class to create a rollback event {@linkplain EventRecorder}
-	 * @author Sutanu_Dalui
-	 *
-	 */
-	public static abstract class RollbackEventRecorder implements EventRecorder{
-		/**
-		 * Do on new record received
-		 * @param record
-		 */
-		protected abstract void onRecord(EventRecord record);
-		@Override
-		public void record(EventRecord record) {
-			record.setRollback(true);
-			onRecord(record);
-		}
-	}
-	/**
-	 * Base class to create a commit event {@linkplain EventRecorder}
-	 * @author Sutanu_Dalui
-	 *
-	 */
-	public static abstract class CommitEventRecorder extends RollbackEventRecorder{
-		/**
-		 * Do on new record received
-		 * @param record
-		 */
-		@Override
-		public void record(EventRecord record) {
-			record.setRollback(false);
-			onRecord(record);
-		}
-	}
 }

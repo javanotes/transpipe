@@ -169,6 +169,7 @@ class KafkaConfiguration implements KafkaAdminSupport {
 		props.setConsumerRebalanceListener(partListener);
 		PartitionAwareMessageListenerContainer container =  new PartitionAwareMessageListenerContainer(consumerFactory(), props, partListener);
 		container.setConcurrency(concurrency);
+		container.setBeanName(topic);
 		return container;
     }
 	@Bean
