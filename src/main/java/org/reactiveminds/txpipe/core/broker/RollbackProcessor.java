@@ -53,5 +53,4 @@ class RollbackProcessor extends KafkaSubscriber {
 	public void setCommitLink(String commitLink) {
 		//noops
 	}
-	
 }

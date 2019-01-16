@@ -39,5 +39,6 @@ public interface Subscriber extends Runnable{
 	 */
 	void setRollbackLink(String rollbackLink);
 	
-
+	void pause();
+	void resume();
 }

@@ -3,6 +3,7 @@ package org.reactiveminds.txpipe.core;
 import static spark.Spark.post;
 import static spark.Spark.put;
 import static spark.Spark.stop;
+import static spark.Spark.delete;
 
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -16,9 +17,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
 
 class RestServer {
-	private static final Logger log = LoggerFactory.getLogger(RestServer.class);
+	private static final Logger log = LoggerFactory.getLogger("RestListener");
 	@Autowired
 	ServiceManager manager;
 	@Value("${txpipe.rest.maxThreads:4}")
@@ -100,12 +103,8 @@ class RestServer {
 		put("/txnpipe/:pipeline", (req, res) -> {
 			try {
 				String[] components = JsonMapper.deserialize(req.body(), String[].class);
-				PipelineDef request = new PipelineDef();
-				request.setPipelineId(req.params(":pipeline"));
-				for(String component : components) {
-					request.addComponent(component);
-				}
-				manager.registerPipeline(request);
+				Assert.isTrue(StringUtils.hasText(req.params(":pipeline")), "pipeline id not specified in url path /txnpipe/:pipeline");
+				manager.registerPipeline(req.params(":pipeline"), components);
 				res.status(201);
 				return "OK";
 			} catch (IllegalArgumentException e) {
@@ -120,7 +119,114 @@ class RestServer {
 				return "Try later. If issue persists, contact support";
 			}
 		});
-		
+		post("/txnpipe/:pipeline/pause", (req, res) -> {
+			try {
+				Assert.isTrue(StringUtils.hasText(req.params(":pipeline")), "pipeline id not specified in url path /txnpipe/:pipeline/pause");
+				manager.pause(req.params(":pipeline"), null);
+				res.status(201);
+				return "OK";
+			} catch (IllegalArgumentException e) {
+				log.error("Request error> "+e.getMessage());
+				log.debug("", e);
+				res.status(400);
+				return e.getMessage();
+			}
+			catch (Exception e) {
+				log.error("Unexpected error: ", e);
+				res.status(503);
+				return "Try later. If issue persists, contact support";
+			}
+		});
+		post("/txnpipe/:pipeline/pause/:txn", (req, res) -> {
+			try {
+				Assert.isTrue(StringUtils.hasText(req.params(":pipeline")), "pipeline id not specified in url path /txnpipe/:pipeline/pause");
+				manager.pause(req.params(":pipeline"), req.params(":txn"));
+				res.status(201);
+				return "OK";
+			} catch (IllegalArgumentException e) {
+				log.error("Request error> "+e.getMessage());
+				log.debug("", e);
+				res.status(400);
+				return e.getMessage();
+			}
+			catch (Exception e) {
+				log.error("Unexpected error: ", e);
+				res.status(503);
+				return "Try later. If issue persists, contact support";
+			}
+		});
+		post("/txnpipe/:pipeline/resume", (req, res) -> {
+			try {
+				Assert.isTrue(StringUtils.hasText(req.params(":pipeline")), "pipeline id not specified in url path /txnpipe/:pipeline/resume");
+				manager.resume(req.params(":pipeline"), null);
+				res.status(201);
+				return "OK";
+			} catch (IllegalArgumentException e) {
+				log.error("Request error> "+e.getMessage());
+				log.debug("", e);
+				res.status(400);
+				return e.getMessage();
+			}
+			catch (Exception e) {
+				log.error("Unexpected error: ", e);
+				res.status(503);
+				return "Try later. If issue persists, contact support";
+			}
+		});
+		post("/txnpipe/:pipeline/resume/:txn", (req, res) -> {
+			try {
+				Assert.isTrue(StringUtils.hasText(req.params(":pipeline")), "pipeline id not specified in url path /txnpipe/:pipeline/resume");
+				manager.resume(req.params(":pipeline"), req.params(":txn"));
+				res.status(201);
+				return "OK";
+			} catch (IllegalArgumentException e) {
+				log.error("Request error> "+e.getMessage());
+				log.debug("", e);
+				res.status(400);
+				return e.getMessage();
+			}
+			catch (Exception e) {
+				log.error("Unexpected error: ", e);
+				res.status(503);
+				return "Try later. If issue persists, contact support";
+			}
+		});
+		delete("/txnpipe/:pipeline", (req, res) -> {
+			try {
+				Assert.isTrue(StringUtils.hasText(req.params(":pipeline")), "pipeline id not specified in url path /txnpipe/:pipeline");
+				manager.stop(req.params(":pipeline"), null);
+				res.status(201);
+				return "OK";
+			} catch (IllegalArgumentException e) {
+				log.error("Request error> "+e.getMessage());
+				log.debug("", e);
+				res.status(400);
+				return e.getMessage();
+			}
+			catch (Exception e) {
+				log.error("Unexpected error: ", e);
+				res.status(503);
+				return "Try later. If issue persists, contact support";
+			}
+		});
+		delete("/txnpipe/:pipeline/:txn", (req, res) -> {
+			try {
+				Assert.isTrue(StringUtils.hasText(req.params(":pipeline")), "pipeline id not specified in url path /txnpipe/:pipeline/:txn");
+				manager.stop(req.params(":pipeline"), req.params(":txn"));
+				res.status(201);
+				return "OK";
+			} catch (IllegalArgumentException e) {
+				log.error("Request error> "+e.getMessage());
+				log.debug("", e);
+				res.status(400);
+				return e.getMessage();
+			}
+			catch (Exception e) {
+				log.error("Unexpected error: ", e);
+				res.status(503);
+				return "Try later. If issue persists, contact support";
+			}
+		});
 	}
 
 }

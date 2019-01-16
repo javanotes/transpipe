@@ -1,10 +1,8 @@
 package org.reactiveminds.txpipe.core.broker;
 
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
@@ -16,11 +14,15 @@ import javax.annotation.PreDestroy;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.reactiveminds.txpipe.api.TransactionService;
+import org.reactiveminds.txpipe.core.Command;
 import org.reactiveminds.txpipe.core.ComponentDef;
-import org.reactiveminds.txpipe.core.PipelineDef;
-import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.Subscriber;
+import org.reactiveminds.txpipe.core.command.CreatePayload;
+import org.reactiveminds.txpipe.core.command.PausePayload;
+import org.reactiveminds.txpipe.core.command.ResumePayload;
+import org.reactiveminds.txpipe.core.command.StopPayload;
 import org.reactiveminds.txpipe.err.ConfigurationException;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
@@ -28,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.NestedExceptionUtils;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.AcknowledgingConsumerAwareMessageListener;
@@ -52,8 +55,9 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	
 	@Value("${txpipe.broker.orchestrationTopic:managerTopic}") 
 	private String orchestrationTopic;
-	
-	private ConcurrentMap<String, PipelineDef> register = new ConcurrentHashMap<>();
+	@Value("${txpipe.broker.loadRegisterOnStart:true}") 
+	private boolean loadDefOnStart;
+	private ConcurrentMap<String, CreatePayload> register = new ConcurrentHashMap<>();
 	private PartitionAwareMessageListenerContainer container;
 	
 	@Value("${txpipe.instanceId}")
@@ -77,81 +81,36 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		if(container.getPartitionListener().getSnapshot().isEmpty())
 			throw new ConfigurationException("No orchestration partitions assigned! Is 'txpipe.instanceId' configured to be unique across cluster?");
 		
-		AllDefinitionsLoader loader = new AllDefinitionsLoader(orchestrationTopic);
-		loader.run();
-		loader.allDefinitions.forEach(def -> doPut(def));
-		log.info("Loaded all existing definitions into registry ..");
-		
-		register.values().forEach(p -> startPipeline(p));
+		if (loadDefOnStart) {
+			AllDefinitionsLoader loader = new AllDefinitionsLoader(orchestrationTopic);
+			loader.run();
+			loader.allDefinitions.forEach(def -> doPut(def));
+			log.info("Loaded all existing definitions into registry ..");
+			register.values().forEach(p -> startPipeline(p));
+		}
 	}
 	@Autowired
 	KafkaAdminSupport adminSupport;
-	/**
-	 * Load all {@link PipelineDef} saved in Kafka topic as edit log.
-	 * @author Sutanu_Dalui
-	 *
-	 */
-	private class AllDefinitionsLoader implements Runnable{
-
-		private final List<PipelineDef> allDefinitions = new ArrayList<>();
-		
-		private String queryTopic;
-		/**
-		 * 
-		 * @param queryTopic
-		 */
-		public AllDefinitionsLoader(String queryTopic) {
-			super();
-			this.queryTopic = queryTopic;
-		}
-
-		@Override
-		public void run() {
-			KafkaTopicIterator iter = null;
-			//log.info("Consumers for " + queryTopic + " - " + adminSupport.listConsumers(queryTopic));
-			try 
-			{
-				iter = beans.getBean(KafkaTopicIterator.class, queryTopic);
-				iter.run();
-				allDefinitions.clear();
-				while(iter.hasNext()) {
-					List<PipelineDef> items = iter.next().stream().map(s -> JsonMapper.deserialize(s, PipelineDef.class)).collect(Collectors.toList());
-					allDefinitions.addAll(items);
-				}
-							
-			} 
-			catch (Exception e) {
-				log.error("Loading of existing definitions failed on startup!", e);
-			}
-			finally {
-				if (iter != null) {
-					iter.close();
-				}
-			}
-		}
-			
-	}
 	
 	@PreDestroy
 	private void destroy() {
 		container.stop();
+		ProcessorRegistry.instance().destroy();
 	}
-	@Override
-	public void add(PipelineDef pipeline) {
-		broadcast(pipeline);
-	}
-
-	private void startThenPut(PipelineDef def) {
+	private void startThenPut(CreatePayload def) {
 		startPipeline(def);
 		doPut(def);
 	}
-	private void startPipeline(PipelineDef def) {
+	private void startPipeline(CreatePayload def) {
 		def.getComponents().forEach(c -> startComponent(c, def.getPipelineId()));
 	}
-	private void doPut(PipelineDef def) {
-		register.put(def.getPipelineId(), def);
-		log.info("Pipeline definition registered [" + def.getPipelineId()+"] (Not all services may be running, however)");
-		log.debug(def.toString());
+	private void doPut(CreatePayload def) {
+		if (def != null && StringUtils.hasText(def.getPipelineId()) && !def.getComponents().isEmpty()) {
+			register.put(def.getPipelineId(), def);
+			log.info("Pipeline definition registered [" + def.getPipelineId()
+					+ "] (Not all services may be running, however)");
+			log.debug(def.toString());
+		}
 	}
 	@Override
 	public boolean contains(String pipelineId) {
@@ -159,10 +118,10 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	}
 
 	@Override
-	public PipelineDef get(String pipelineId) {
-		PipelineDef def = register.get(pipelineId);
+	public CreatePayload get(String pipelineId) {
+		CreatePayload def = register.get(pipelineId);
 		if(def != null)
-			return new PipelineDef(def.getPipelineId(), def.getComponents());
+			return new CreatePayload(def.getPipelineId(), def.getComponents());
 		
 		return null;
 	}
@@ -174,39 +133,62 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		}
 		return null;
 	}
-
-	private void broadcast(PipelineDef pipeline) {
-		kafkaTemplate.send(orchestrationTopic, JsonMapper.serialize(pipeline));
+	
+	private void doStop(Command c) {
+		StopPayload cmd = JsonMapper.deserialize(c.getPayload(), StopPayload.class);
+		ProcessorRegistry.instance().stop(cmd);
 	}
-
+	private void doResume(Command c) {
+		ResumePayload cmd = JsonMapper.deserialize(c.getPayload(), ResumePayload.class);
+		ProcessorRegistry.instance().resume(cmd);
+	}
+	private void doPause(Command c) {
+		PausePayload cmd = JsonMapper.deserialize(c.getPayload(), PausePayload.class);
+		ProcessorRegistry.instance().pause(cmd);
+	}
+	private void doStart(Command c) {
+		CreatePayload def = JsonMapper.deserialize(c.getPayload(), CreatePayload.class);
+		startThenPut(def);
+	}
+	private void switchCommand(String command) {
+		Command c = JsonMapper.deserialize(command, Command.class);
+		switch(c.getCommand()) {
+			case START:
+				doStart(c);
+				break;
+			case PAUSE:
+				doPause(c);
+				break;
+			case RESUME:
+				doResume(c);
+				break;
+			case STOP:
+				doStop(c);
+				break;
+			default:
+				log.error("Not a valid command! '"+command+"'. If previous version data lying in orchestration topic, use a new topic");
+				break;
+		}
+	}
+	
 	@Override
 	public void onMessage(ConsumerRecord<String, String> data, Acknowledgment acknowledgment, Consumer<?, ?> consumer) {
-		PipelineDef def = JsonMapper.deserialize(data.value(), PipelineDef.class);
-		startThenPut(def);
-		acknowledgment.acknowledge();
+		try {
+			switchCommand(data.value());
+		} catch(Exception e) {
+			log.error(NestedExceptionUtils.buildMessage("Irrecoverable error at component manager ", e));
+			log.debug("", e);
+		}
+		finally {
+			acknowledgment.acknowledge();
+		}
+		
 	}
 	
 	@Value("${txpipe.broker.topicPartition:10}")
 	private int partition;
 	@Value("${txpipe.broker.topicReplica:1}")
 	private short replica;
-	
-	private static class RegisteredProcessor{
-		private final Subscriber commit;
-		private final Subscriber rollback;
-		public RegisteredProcessor(Subscriber commit, Subscriber rollback) {
-			super();
-			this.commit = commit;
-			this.rollback = rollback;
-		}
-		
-		void stop() {
-			if(commit != null)
-				commit.stop();
-			if(rollback != null)
-				rollback.stop();
-		}
-	}
 	
 	private boolean isTxnBeanExists(String bean) {
 		return beanFactory.containsBean(bean) && beanFactory.isTypeMatch(bean, TransactionService.class);
@@ -219,7 +201,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 			log.debug("No TransactionService bean found for component - " + defn.getComponentId());
 		}
 	}
-	private final Map<String, RegisteredProcessor> processorRegistry = Collections.synchronizedMap(new HashMap<>());
+	
 	/**
 	 * Prepare and start the consumers.
 	 * @param defn
@@ -244,13 +226,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		}
 		
 		String key = commitSub.getListenerId();
-		
-		if(processorRegistry.containsKey(key)) {
-			log.warn("Running processors for "+ key + " are being stopped on new configuration received ..");
-			RegisteredProcessor proc = processorRegistry.remove(key);
-			proc.stop();
-		}
-		
+		ProcessorRegistry.instance().removeIfPresent(key);
 		
 		createTopicsIfNotExist(defn);
 		
@@ -258,7 +234,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 			rollbackSub.run();
 		}
 		commitSub.run();
-		processorRegistry.put(key, new RegisteredProcessor(commitSub, rollbackSub));
+		ProcessorRegistry.instance().put(key, commitSub, rollbackSub);
 		
 		log.debug(commitSub.toString());
 		if (rollbackSub != null) {
@@ -279,6 +255,84 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		
 		if(StringUtils.hasText(defn.getRollbackQueuePrev()))
 			pubAdmin.createTopic(defn.getRollbackQueuePrev(), partition, replica);
+	}
+	
+	/**
+	 * Load all {@link CreatePayload} saved in Kafka topic as edit log.
+	 * @author Sutanu_Dalui
+	 *
+	 */
+	private class AllDefinitionsLoader implements Runnable{
+
+		private final List<CreatePayload> allDefinitions = new ArrayList<>();
+		private String queryTopic;
+		/**
+		 * 
+		 * @param queryTopic
+		 */
+		public AllDefinitionsLoader(String queryTopic) {
+			super();
+			this.queryTopic = queryTopic;
+		}
+
+		@Override
+		public void run() {
+			KafkaTopicIterator iter = null;
+			//log.info("Consumers for " + queryTopic + " - " + adminSupport.listConsumers(queryTopic));
+			try 
+			{
+				iter = beans.getBean(KafkaTopicIterator.class, queryTopic);
+				iter.run();
+				allDefinitions.clear();
+				while (iter.hasNext()) {
+					List<CreatePayload> items = iter.next().stream()
+							.map(s -> {
+									log.debug("Reading meta : " + s);
+									try {
+										Command c = JsonMapper.deserialize(s, Command.class);
+										if(c.isCreate()) {
+											return JsonMapper.deserialize(c.getPayload(), CreatePayload.class);
+										}
+									} catch (UncheckedIOException e) {
+										log.debug(e.getMessage() + " (This could due be a mixup of different version metadata lying in orchestration topic)");
+										log.debug("", e);
+										try {
+											return JsonMapper.deserialize(s, CreatePayload.class);
+										} catch (UncheckedIOException e1) {
+											log.warn(NestedExceptionUtils.buildMessage(
+													"Skipping unrecognized metadata read from orchestration topic. This could due be a mixup of different versioned data ",
+													e1) );
+											log.debug("", e1);
+										}
+									}
+									return null;
+							})
+							.filter(c -> {
+								try {
+									return c != null && StringUtils.hasText(c.getOpeningChannel());
+								} catch (IllegalArgumentException e) {
+									return false;
+								}
+							})
+							.collect(Collectors.toList());
+					
+					if (items != null && !items.isEmpty()) {
+						allDefinitions.addAll(items);
+					}
+					
+				}
+							
+			} 
+			catch (Exception e) {
+				log.error("Loading of existing definitions on startup failed! ", e);
+			}
+			finally {
+				if (iter != null) {
+					iter.close();
+				}
+			}
+		}
+			
 	}
 
 }

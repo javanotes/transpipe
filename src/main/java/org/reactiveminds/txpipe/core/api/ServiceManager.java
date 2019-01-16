@@ -3,15 +3,7 @@ package org.reactiveminds.txpipe.core.api;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import org.reactiveminds.txpipe.core.PipelineDef;
-
 public interface ServiceManager {
-
-	/**
-	 * Start a new transaction component
-	 * @param defn
-	 */
-	void registerPipeline(PipelineDef defn);
 
 	/**
 	 * Invoke a new transaction pipeline. This is the service method to be invoked from REST endpoints
@@ -33,5 +25,28 @@ public interface ServiceManager {
 
 	String ROLLBACK_PROCESSOR_BEAN_NAME = "rollbackProcessor";
 	String COMMIT_PROCESSOR_BEAN_NAME = "commitProcessor";
-	
+	/**
+	 * Register and start a new transaction component
+	 * @param params
+	 * @param components
+	 */
+	void registerPipeline(String params, String...components);
+	/**
+	 * 
+	 * @param pipeline
+	 * @param component
+	 */
+	void pause(String pipeline, String component);
+	/**
+	 * 
+	 * @param pipeline
+	 * @param component
+	 */
+	void resume(String pipeline, String component);
+	/**
+	 * 
+	 * @param pipeline
+	 * @param component
+	 */
+	void stop(String pipeline, String component);
 }

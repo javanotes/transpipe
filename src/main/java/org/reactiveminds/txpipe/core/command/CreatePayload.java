@@ -1,34 +1,35 @@
-package org.reactiveminds.txpipe.core;
+package org.reactiveminds.txpipe.core.command;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.reactiveminds.txpipe.core.ComponentDef;
 import org.springframework.util.Assert;
 
-public class PipelineDef {
+public class CreatePayload {
 
 	/**
 	 * Copy constructor
 	 * @param pipelineId
 	 * @param components
 	 */
-	public PipelineDef(String pipelineId, List<ComponentDef> components) {
+	public CreatePayload(String pipelineId, List<ComponentDef> components) {
 		super();
 		this.pipelineId = pipelineId;
 		this.components.addAll(components.stream().map(c -> c.copy()).collect(Collectors.toList()));
 	}
 
-	public PipelineDef() {
+	public CreatePayload() {
 	}
 	
-	public PipelineDef(String pipelineId) {
+	public CreatePayload(String pipelineId) {
 		super();
 		this.pipelineId = pipelineId;
 	}
 
 	private String pipelineId;
-	private List<ComponentDef> components = new ArrayList<>();
+	private final List<ComponentDef> components = new ArrayList<>();
 	static final String COMMIT_SUFFIX = "__C";
 	static final String ROLLBACK_SUFFIX = "__R";
 	/**
@@ -47,7 +48,7 @@ public class PipelineDef {
 	 * @param txnBeanName
 	 * @return
 	 */
-	public PipelineDef addComponent(String txnBeanName) {
+	public CreatePayload addComponent(String txnBeanName) {
 		Assert.notNull(pipelineId, "pipelineId is not set");
 		int i = components.size();
 		ComponentDef current = new ComponentDef();

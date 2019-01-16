@@ -1,5 +1,6 @@
 package org.transpipe.samples;
 
+import org.reactiveminds.txpipe.api.AbstractTransactionService;
 import org.reactiveminds.txpipe.api.TransactionService;
 import org.reactiveminds.txpipe.core.EngineConfiguration;
 import org.reactiveminds.txpipe.err.CommitFailedException;
@@ -13,10 +14,10 @@ import org.springframework.context.annotation.Import;
 @Import(EngineConfiguration.class)
 public class Config {
 
-	private static final Logger log = LoggerFactory.getLogger("TXNLOGGER");
+	private static final Logger log = LoggerFactory.getLogger("Service_Log");
 	@Bean
 	TransactionService checkCredit() {
-		return new TransactionService() {
+		return new AbstractTransactionService() {
 			
 			@Override
 			public void rollback(String txnId) {
@@ -33,7 +34,7 @@ public class Config {
 	
 	@Bean
 	TransactionService bookTicket() {
-		return new TransactionService() {
+		return new AbstractTransactionService() {
 			
 			@Override
 			public void rollback(String txnId) {
@@ -50,7 +51,7 @@ public class Config {
 	
 	@Bean
 	TransactionService notifyUser() {
-		return new TransactionService() {
+		return new AbstractTransactionService() {
 			
 			@Override
 			public void rollback(String txnId) {
@@ -67,7 +68,7 @@ public class Config {
 	
 	@Bean
 	TransactionService notifyUserFailed() {
-		return new TransactionService() {
+		return new AbstractTransactionService() {
 			
 			@Override
 			public void rollback(String txnId) {

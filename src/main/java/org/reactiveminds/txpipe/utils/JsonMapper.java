@@ -6,6 +6,7 @@ import java.io.UncheckedIOException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 
 public class JsonMapper {
 
@@ -14,6 +15,8 @@ public class JsonMapper {
 	private static class Wrapper{
 		private static final ObjectMapper mapper = new ObjectMapper()
 				.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+				.enable(SerializationFeature.WRITE_ENUMS_USING_TO_STRING)
+				.enable(DeserializationFeature.READ_ENUMS_USING_TO_STRING)
 				;
 	}
 	/**
@@ -38,8 +41,8 @@ public class JsonMapper {
 	public static <T> T deserialize(String json, Class<T> type) {
 		try {
 			return Wrapper.mapper.readerFor(type).readValue(json);
-		} catch (IOException e) {
-			throw new UncheckedIOException(e);
+		} catch (Exception e) {
+			throw new UncheckedIOException(new IOException(e));
 		}
 	}
 }

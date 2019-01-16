@@ -154,9 +154,10 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		}
 	}
 
+	static final char LISTENER_ID_SEP = '.';
 	@Override
 	public String getListenerId() {
-		return pipeline+"."+componentId;
+		return pipeline+LISTENER_ID_SEP+componentId;
 	}
 
 	protected String componentId;
@@ -178,7 +179,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	 * @param event
 	 * @return T the returning bean. It should not be {@linkplain Event} type
 	 */
-	String process(Event event) {
+	final String process(Event event) {
 		//the bean should be there, as the starting the components will depend on it
 		TransactionService service = (TransactionService) factory.getBean(componentId);
 		if(isCommitMode) {
@@ -220,5 +221,14 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		else
 			new EventRecorderRunner(data, null).run();
 	}
-	
+	@Override
+	public void pause() {
+		container.pause();
+		PLOG.warn("Container paused .. "+getListenerId());
+	}
+	@Override
+	public void resume() {
+		container.resume();
+		PLOG.info("Container resumed .. "+getListenerId());
+	}
 }

@@ -1,13 +1,8 @@
 package org.reactiveminds.txpipe.core.api;
 
-import org.reactiveminds.txpipe.core.PipelineDef;
+import org.reactiveminds.txpipe.core.command.CreatePayload;
 
 public interface ComponentManager {
-	/**
-	 * Add a new component (or replace if present) to the registry
-	 * @param component
-	 */
-	void add(PipelineDef pipeline);
 	/**
 	 * If the component already exists
 	 * @param componentId
@@ -19,7 +14,7 @@ public interface ComponentManager {
 	 * @param componentId
 	 * @return
 	 */
-	PipelineDef get(String pipelineId);
+	CreatePayload get(String pipelineId);
 	/**
 	 * Get the source queue for triggering the pipeline
 	 * @param componentId

@@ -2,6 +2,8 @@ package org.reactiveminds.txpipe.api;
 
 import org.reactiveminds.txpipe.core.ComponentDef;
 import org.reactiveminds.txpipe.err.CommitFailedException;
+import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.InitializingBean;
 
 /**
  * This class needs to be implemented as a core transaction service, and will be mapped to each
@@ -10,7 +12,7 @@ import org.reactiveminds.txpipe.err.CommitFailedException;
  * @author Sutanu_Dalui
  *
  */
-public interface TransactionService {
+public interface TransactionService extends DisposableBean, InitializingBean{
 	/**
 	 * Commit this transaction request. The global txnId passed should be stored for further referencing, in case of a 
 	 * future rollback triggered.
