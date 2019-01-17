@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core.broker;
+package org.reactiveminds.txpipe.core.engine;
 
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
@@ -14,15 +14,15 @@ import javax.annotation.PreDestroy;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.reactiveminds.txpipe.api.TransactionService;
-import org.reactiveminds.txpipe.core.Command;
-import org.reactiveminds.txpipe.core.ComponentDef;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
 import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.Subscriber;
-import org.reactiveminds.txpipe.core.command.CreatePayload;
-import org.reactiveminds.txpipe.core.command.PausePayload;
-import org.reactiveminds.txpipe.core.command.ResumePayload;
-import org.reactiveminds.txpipe.core.command.StopPayload;
+import org.reactiveminds.txpipe.core.dto.Command;
+import org.reactiveminds.txpipe.core.dto.ComponentDef;
+import org.reactiveminds.txpipe.core.dto.CreatePayload;
+import org.reactiveminds.txpipe.core.dto.PausePayload;
+import org.reactiveminds.txpipe.core.dto.ResumePayload;
+import org.reactiveminds.txpipe.core.dto.StopPayload;
 import org.reactiveminds.txpipe.err.ConfigurationException;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
@@ -53,14 +53,14 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	KafkaPublisher pubAdmin;
 	
 	
-	@Value("${txpipe.broker.orchestrationTopic:managerTopic}") 
+	@Value("${txpipe.core.orchestrationTopic:managerTopic}") 
 	private String orchestrationTopic;
-	@Value("${txpipe.broker.loadRegisterOnStart:true}") 
+	@Value("${txpipe.core.loadRegisterOnStart:true}") 
 	private boolean loadDefOnStart;
 	private ConcurrentMap<String, CreatePayload> register = new ConcurrentHashMap<>();
 	private PartitionAwareMessageListenerContainer container;
 	
-	@Value("${txpipe.instanceId}")
+	@Value("${txpipe.core.instanceId}")
 	private String groupId;
 	
 	@PostConstruct
@@ -82,11 +82,12 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 			throw new ConfigurationException("No orchestration partitions assigned! Is 'txpipe.instanceId' configured to be unique across cluster?");
 		
 		if (loadDefOnStart) {
+			log.info("Start reading existing metadata ..");
 			AllDefinitionsLoader loader = new AllDefinitionsLoader(orchestrationTopic);
 			loader.run();
 			loader.allDefinitions.forEach(def -> doPut(def));
-			log.info("Loaded all existing definitions into registry ..");
 			register.values().forEach(p -> startPipeline(p));
+			log.info("Loaded discovered definitions into registry");
 		}
 	}
 	@Autowired
@@ -107,7 +108,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	private void doPut(CreatePayload def) {
 		if (def != null && StringUtils.hasText(def.getPipelineId()) && !def.getComponents().isEmpty()) {
 			register.put(def.getPipelineId(), def);
-			log.info("Pipeline definition registered [" + def.getPipelineId()
+			log.debug("Pipeline definition registered [" + def.getPipelineId()
 					+ "] (Not all services may be running, however)");
 			log.debug(def.toString());
 		}
@@ -150,6 +151,9 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		CreatePayload def = JsonMapper.deserialize(c.getPayload(), CreatePayload.class);
 		startThenPut(def);
 	}
+	private void doAbort(Command c) {
+		ProcessorRegistry.instance().abort(c.getPayload());
+	}
 	private void switchCommand(String command) {
 		Command c = JsonMapper.deserialize(command, Command.class);
 		switch(c.getCommand()) {
@@ -165,6 +169,9 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 			case STOP:
 				doStop(c);
 				break;
+			case ABORT:
+				doAbort(c);
+				break;
 			default:
 				log.error("Not a valid command! '"+command+"'. If previous version data lying in orchestration topic, use a new topic");
 				break;
@@ -176,8 +183,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		try {
 			switchCommand(data.value());
 		} catch(Exception e) {
-			log.error(NestedExceptionUtils.buildMessage("Irrecoverable error at component manager ", e));
-			log.debug("", e);
+			log.error("Irrecoverable error at component manager ", e);
 		}
 		finally {
 			acknowledgment.acknowledge();
@@ -226,9 +232,8 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		}
 		
 		String key = commitSub.getListenerId();
-		ProcessorRegistry.instance().removeIfPresent(key);
-		
 		createTopicsIfNotExist(defn);
+		ProcessorRegistry.instance().removeIfPresent(key);
 		
 		if(rollbackSub != null) {
 			rollbackSub.run();

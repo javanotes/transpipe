@@ -1,10 +1,9 @@
-package org.reactiveminds.txpipe.core.command;
+package org.reactiveminds.txpipe.core.dto;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.reactiveminds.txpipe.core.ComponentDef;
 import org.springframework.util.Assert;
 
 public class CreatePayload {

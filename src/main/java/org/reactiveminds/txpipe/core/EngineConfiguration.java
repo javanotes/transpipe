@@ -1,9 +1,11 @@
 package org.reactiveminds.txpipe.core;
 
-import org.reactiveminds.txpipe.api.EventRecorder;
 import org.reactiveminds.txpipe.core.api.ServiceManager;
-import org.reactiveminds.txpipe.core.api.TransactionMarker;
-import org.reactiveminds.txpipe.core.broker.BrokerEngineConfiguration;
+import org.reactiveminds.txpipe.core.engine.BrokerEngineConfiguration;
+import org.reactiveminds.txpipe.spi.EventRecorder;
+import org.reactiveminds.txpipe.spi.TransactionMarker;
+import org.reactiveminds.txpipe.spi.impl.LogbackEventRecorder;
+import org.reactiveminds.txpipe.spi.impl.TransactionExpirationMarker;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -29,11 +31,11 @@ public class EngineConfiguration {
 	@ConditionalOnMissingBean
 	@Bean
 	TransactionMarker transactionMarker() {
-		return new DefaultTransactionMarker();
+		return new TransactionExpirationMarker();
 	}
 	@ConditionalOnMissingBean
 	@Bean
 	EventRecorder eventRecorder() {
-		return new DefaultEventRecorder();
+		return new LogbackEventRecorder();
 	}
 }

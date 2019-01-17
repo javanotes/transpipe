@@ -1,13 +1,14 @@
-package org.reactiveminds.txpipe.core.broker;
+package org.reactiveminds.txpipe.core.engine;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
 import org.reactiveminds.txpipe.core.api.Subscriber;
-import org.reactiveminds.txpipe.core.command.PausePayload;
-import org.reactiveminds.txpipe.core.command.ResumePayload;
-import org.reactiveminds.txpipe.core.command.StopPayload;
+import org.reactiveminds.txpipe.core.dto.Event;
+import org.reactiveminds.txpipe.core.dto.PausePayload;
+import org.reactiveminds.txpipe.core.dto.ResumePayload;
+import org.reactiveminds.txpipe.core.dto.StopPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.Assert;
@@ -24,8 +25,15 @@ class ProcessorRegistry {
 	private static boolean isSubscriberOfPipeline(Subscriber commit, String pipe) {
 		return StringUtils.hasText(commit.getListenerId()) && commit.getListenerId().startsWith(pipe);
 	}
-	private static boolean isSubscriberOfTransaction(Subscriber commit, String pipe, String txn) {
-		return isSubscriberOfPipeline(commit, pipe) && commit.getListenerId().endsWith(txn);
+	/**
+	 * 
+	 * @param commit
+	 * @param pipe
+	 * @param txnName
+	 * @return
+	 */
+	private static boolean isSubscriberOfTransaction(Subscriber commit, String pipe, String txnName) {
+		return isSubscriberOfPipeline(commit, pipe) && commit.getListenerId().endsWith(txnName);
 	}
 	public static ProcessorRegistry instance() {
 		return Loader.me;
@@ -43,7 +51,15 @@ class ProcessorRegistry {
 		}
 		processorRegistry.put(key, new RegisteredProcessor((CommitProcessor)commitSub, (RollbackProcessor)rollbackSub));
 	}
-	
+	/**
+	 * Rollback the given txn Id.
+	 * @param txnId
+	 */
+	public void abort(String txnId) {
+		synchronized (processorRegistry) {
+			processorRegistry.forEach((k,proc) -> proc.abort(txnId));
+		}
+	}
 	/**
 	 * 
 	 * @param key
@@ -156,8 +172,20 @@ class ProcessorRegistry {
 			this.commit = commit;
 			this.rollback = rollback;
 		}
-		
-		private void stop() {
+		public void abort(String txnId) {
+			//TODO: if node goes down before paused component is resumed
+			//it will get processed on restart (wrong)
+			//we need to persist the filters?
+			commit.addFilter(k -> !txnId.equals(KafkaPublisher.extractTxnId(k)));
+			if(rollback != null) {
+				log.warn("["+rollback.getListenerId()+"] Forcing rollback for transaction : "+txnId);
+				Event e = new Event();
+				e.setTxnId(txnId);
+				e.setDestination(rollback.listeningTopic);
+				rollback.abort(e);
+			}
+		}
+		public void stop() {
 			if(commit != null)
 				commit.stop();
 			if(rollback != null)

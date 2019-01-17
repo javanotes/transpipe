@@ -1,7 +1,7 @@
-package org.reactiveminds.txpipe.core.broker;
+package org.reactiveminds.txpipe.core.engine;
 
-import org.reactiveminds.txpipe.core.Event;
 import org.reactiveminds.txpipe.core.api.Publisher;
+import org.reactiveminds.txpipe.core.dto.Event;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 
@@ -35,9 +35,7 @@ class RollbackProcessor extends KafkaSubscriber {
 	public void consume(Event event) {
 		try {
 			process(event);
-		} catch (Exception e) {
-			throw e;
-		}
+		} 
 		finally {
 			if (StringUtils.hasText(rollbackLink)) {
 				propagate(event);
@@ -53,4 +51,5 @@ class RollbackProcessor extends KafkaSubscriber {
 	public void setCommitLink(String commitLink) {
 		//noops
 	}
+	
 }

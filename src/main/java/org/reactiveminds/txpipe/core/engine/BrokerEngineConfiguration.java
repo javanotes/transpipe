@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core.broker;
+package org.reactiveminds.txpipe.core.engine;
 
 import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.ComponentManager;

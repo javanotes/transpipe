@@ -1,7 +1,5 @@
-package org.reactiveminds.txpipe.api;
+package org.reactiveminds.txpipe.spi;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 /**
  * Interface to be implemented for creating event recorders. Need to declare them as 
  * spring managed beans.
@@ -11,9 +9,9 @@ import org.slf4j.LoggerFactory;
  */
 public interface EventRecorder {
 	/**
-	 * 
+	 * record based on the underlying implementation.
 	 * @param record
 	 */
 	void record(EventRecord record);
-	Logger eventLogger = LoggerFactory.getLogger("EventLog");
+	
 }

@@ -1,19 +1,21 @@
-package org.reactiveminds.txpipe.core.broker;
+package org.reactiveminds.txpipe.core.engine;
 
 import java.io.UncheckedIOException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.reactiveminds.txpipe.api.EventRecord;
-import org.reactiveminds.txpipe.api.EventRecorder;
+import org.apache.kafka.common.record.TimestampType;
 import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.api.TransactionService;
-import org.reactiveminds.txpipe.core.Event;
 import org.reactiveminds.txpipe.core.api.Subscriber;
-import org.reactiveminds.txpipe.core.api.TransactionMarker;
+import org.reactiveminds.txpipe.core.dto.Event;
 import org.reactiveminds.txpipe.err.CommitFailedException;
+import org.reactiveminds.txpipe.spi.EventRecord;
+import org.reactiveminds.txpipe.spi.EventRecorder;
+import org.reactiveminds.txpipe.spi.TransactionMarker;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,7 +70,6 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		}
 		private final ConsumerRecord<?, ?> data;
 		private final Exception isError;
-		
 		/**
 		 * record the event if needed for further tracing/analysis.
 		 * @param data
@@ -77,12 +78,12 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		protected void recordEvent() {
 			if (eventRecorder != null) {
 				EventRecord record = new EventRecord(data.topic(), data.partition(), data.offset(), data.timestamp(),
-						data.key().toString());
+						data.key() != null ? data.key().toString() : "");
 				record.setError(isError != null);
 				if (record.isError()) {
 					record.setErrorDetail(isError.getMessage());
 				}
-				record.setValue(data.value().toString());
+				record.setValue(data.value() != null ? data.value().toString() : "");
 				record.setRollback(!isCommitMode);
 				eventRecorder.record(record);
 			}
@@ -99,9 +100,9 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	private boolean awaitConsumerRebalance;
 	@Value("${txpipe.broker.awaitConsumerRebalance.maxWaitSecs:30}")
 	private long awaitConsumerRebalanceMaxWait;
-	@Value("${txpipe.broker.recordEventAsync:false}")
+	@Value("${txpipe.event.recordAsync:true}")
 	private boolean recordEventAsync;
-	@Value("${txpipe.broker.recordEventAsync.maxThreads:2}")
+	@Value("${txpipe.event.recordAsync.maxThreads:2}")
 	private int recordEventAsyncMaxThreads;
 	
 	private PartitionAwareMessageListenerContainer container;
@@ -120,15 +121,19 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	KafkaTemplate<String, String> pub;
 	
 	private ExecutorService eventThread;
+	private volatile boolean started = false;
 	@Override
 	public void run() {
 		if(recordEventAsync) {
 			eventThread = Executors.newFixedThreadPool(recordEventAsyncMaxThreads, (r)-> new Thread(r, "SubcriberEventRecorder"));
 		}
+		addFilter(k -> pipeline.equals(KafkaPublisher.extractPipeline(k)));
+		
 		container = factory.getBean(PartitionAwareMessageListenerContainer.class, listeningTopic, getListenerId(), concurreny, new ContainerErrHandler());
 		container.setupMessageListener(this);
 		container.setBeanName(getListenerId());
 		container.start();
+		started = true;
 		if (awaitConsumerRebalance) {
 			boolean done = container.getPartitionListener().awaitOnReady(awaitConsumerRebalanceMaxWait, TimeUnit.SECONDS);
 			if(!done)
@@ -143,6 +148,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	@Override
 	public void stop() {
 		container.stop();
+		started = false;
 		PLOG.info("Container stopped .. "+getListenerId());
 		if(eventThread != null) {
 			eventThread.shutdown();
@@ -166,7 +172,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		this.componentId = componentId;
 	}
 	@Autowired
-	TransactionMarker marker;
+	private TransactionMarker marker;
 	final void beginTxn(String txnId) {
 		marker.begin(txnId);
 	}
@@ -190,9 +196,35 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		}
 		return null;
 	}
+	/**
+	 * Abort on request timeout
+	 * @param event
+	 */
+	final void abort(Event event) {
+		//the bean should be there, as the starting the components will depend on it
+		TransactionService service = (TransactionService) factory.getBean(componentId);
+		try {
+			service.abort(event.getTxnId());
+		} finally {
+			recordEvent(event, new CommitFailedException("Rolled back on timeout", null));
+		}
+	}
+	private volatile Predicate<String> filters;
+	/**
+	 * Add another {@linkplain AllowedTransactionFilter} AND-ed to existing, if any.
+	 * @param f
+	 */
+	synchronized void addFilter(AllowedTransactionFilter f) {
+		filters = filters == null ? f : filters.and(f);
+	}
+	/**
+	 * Test all the filters to determine if this message will be delivered for processing
+	 * @param key
+	 * @return
+	 */
 	private boolean isPassFilter(String key) {
 		try {
-			return pipeline.equals(KafkaPublisher.extractPipeline(key));
+			return filters.test(key);
 		} catch (Exception e) {
 			CLOG.warn("Err on record key filtering - "+e.getMessage());
 			CLOG.debug("", e);
@@ -214,21 +246,52 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	}
 	private void doOnMessage(ConsumerRecord<String, String> data) {
 		Event event = JsonMapper.deserialize(data.value(), Event.class);
-		consume(event);
+		Exception ex = null;
+		try {
+			consume(event);
+		} catch (Exception e) {
+			ex = e;
+			throw e;
+		}
+		finally {
+			recordEvent(data, ex);
+		}
+	}
+	private void recordEvent(ConsumerRecord<String, String> data, Exception e) {
 		if (recordEventAsync) {
-			eventThread.submit(new EventRecorderRunner(data, null));
+			eventThread.submit(new EventRecorderRunner(data, e));
 		}
 		else
-			new EventRecorderRunner(data, null).run();
+			new EventRecorderRunner(data, e).run();
 	}
+	/**
+	 * To record event on a forced rollback.
+	 * @param event
+	 * @param e
+	 */
+	private void recordEvent(Event event, Exception e) {
+		recordEvent(new ConsumerRecord<>(event.getDestination(), -1, -1, event.getTimestamp(),
+				TimestampType.NO_TIMESTAMP_TYPE, 0, 0, 0, event.getTxnId(), event.getPayload()), e);
+	}
+	private volatile boolean paused = false;
 	@Override
 	public void pause() {
 		container.pause();
+		paused = true;
 		PLOG.warn("Container paused .. "+getListenerId());
 	}
 	@Override
 	public void resume() {
 		container.resume();
+		paused = false;
 		PLOG.info("Container resumed .. "+getListenerId());
+	}
+	@Override
+	public boolean isPaused() {
+		return paused;
+	}
+	@Override
+	public boolean isRunning() {
+		return started;
 	}
 }

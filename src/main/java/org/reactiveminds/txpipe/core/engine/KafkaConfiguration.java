@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core.broker;
+package org.reactiveminds.txpipe.core.engine;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -16,7 +16,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.reactiveminds.txpipe.core.broker.PartitionAwareMessageListenerContainer.PartitionListener;
+import org.reactiveminds.txpipe.core.engine.PartitionAwareMessageListenerContainer.PartitionListener;
 import org.reactiveminds.txpipe.err.BrokerException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
@@ -40,7 +40,7 @@ import org.springframework.stereotype.Component;
 class KafkaConfiguration implements KafkaAdminSupport {
 
 	private final KafkaProperties properties;
-	@Value("${txpipe.instanceId}")
+	@Value("${txpipe.core.instanceId}")
 	private String groupId;
 	
 	public KafkaConfiguration(KafkaProperties properties) {

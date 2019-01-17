@@ -1,10 +1,11 @@
-package org.reactiveminds.txpipe.core.command;
+package org.reactiveminds.txpipe.core.dto;
 
-public class PausePayload {
-	public PausePayload() {
+public class StopPayload {
+
+	public StopPayload() {
 	}
-
-	public PausePayload(String pipelineId, String componentId) {
+	
+	public StopPayload(String pipelineId, String componentId) {
 		super();
 		this.pipelineId = pipelineId;
 		this.componentId = componentId;
@@ -13,19 +14,15 @@ public class PausePayload {
 	public String getPipelineId() {
 		return pipelineId;
 	}
-
 	public void setPipelineId(String pipelineId) {
 		this.pipelineId = pipelineId;
 	}
-
 	public String getComponentId() {
 		return componentId;
 	}
-
 	public void setComponentId(String componentId) {
 		this.componentId = componentId;
 	}
-
 	private String pipelineId;
 	private String componentId;
 }

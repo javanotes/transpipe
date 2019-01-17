@@ -49,4 +49,9 @@ public interface ServiceManager {
 	 * @param component
 	 */
 	void stop(String pipeline, String component);
+	/**
+	 * Abort the given transaction. Will rollback all components.
+	 * @param txnId
+	 */
+	void abort(String txnId);
 }

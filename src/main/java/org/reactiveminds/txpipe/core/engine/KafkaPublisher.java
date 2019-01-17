@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core.broker;
+package org.reactiveminds.txpipe.core.engine;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -14,8 +14,8 @@ import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.utils.Utils;
 import org.reactiveminds.txpipe.api.TransactionResult;
-import org.reactiveminds.txpipe.core.Event;
 import org.reactiveminds.txpipe.core.api.Publisher;
+import org.reactiveminds.txpipe.core.dto.Event;
 import org.reactiveminds.txpipe.err.BrokerException;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.reactiveminds.txpipe.utils.UUIDs;
@@ -59,6 +59,13 @@ public class KafkaPublisher implements Publisher {
 		int i = -1;
 		if((i = key.indexOf(KEY_SEP)) != -1) {
 			return key.substring(0,i);
+		}
+		throw new IllegalArgumentException("Not a valid key '"+key+"'");
+	}
+	public static String extractTxnId(String key) {
+		int i = -1;
+		if((i = key.indexOf(KEY_SEP)) != -1) {
+			return key.substring(i+1);
 		}
 		throw new IllegalArgumentException("Not a valid key '"+key+"'");
 	}

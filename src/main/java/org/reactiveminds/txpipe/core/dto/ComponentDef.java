@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core;
+package org.reactiveminds.txpipe.core.dto;
 
 public class ComponentDef {
 

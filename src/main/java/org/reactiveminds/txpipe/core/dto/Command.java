@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core;
+package org.reactiveminds.txpipe.core.dto;
 
 import java.io.IOException;
 import java.util.EnumSet;
@@ -6,8 +6,8 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import org.reactiveminds.txpipe.core.Command.CommandDeserializer;
-import org.reactiveminds.txpipe.core.Command.CommandSerializer;
+import org.reactiveminds.txpipe.core.dto.Command.CommandDeserializer;
+import org.reactiveminds.txpipe.core.dto.Command.CommandSerializer;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
@@ -25,7 +25,7 @@ import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
 public class Command {
 
 	public static enum Code{
-		START,PAUSE,RESUME,STOP;
+		START,PAUSE,RESUME,STOP,ABORT;
 	}
 		
 	private static final Map<String, Code> CODES;

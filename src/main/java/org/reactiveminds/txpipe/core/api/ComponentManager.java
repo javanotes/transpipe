@@ -1,6 +1,6 @@
 package org.reactiveminds.txpipe.core.api;
 
-import org.reactiveminds.txpipe.core.command.CreatePayload;
+import org.reactiveminds.txpipe.core.dto.CreatePayload;
 
 public interface ComponentManager {
 	/**

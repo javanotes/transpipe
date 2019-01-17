@@ -1,6 +1,6 @@
 package org.reactiveminds.txpipe.core.api;
 
-import org.reactiveminds.txpipe.core.Event;
+import org.reactiveminds.txpipe.core.dto.Event;
 
 public interface Subscriber extends Runnable{
 	/**
@@ -38,7 +38,8 @@ public interface Subscriber extends Runnable{
 	 * @param rollbackLink
 	 */
 	void setRollbackLink(String rollbackLink);
-	
+	boolean isPaused();
+	boolean isRunning();
 	void pause();
 	void resume();
 }

@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core.command;
+package org.reactiveminds.txpipe.core.dto;
 
 public class ResumePayload {
 	public ResumePayload() {

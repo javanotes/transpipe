@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.api;
+package org.reactiveminds.txpipe.spi;
 
 import org.reactiveminds.txpipe.utils.JsonMapper;
 

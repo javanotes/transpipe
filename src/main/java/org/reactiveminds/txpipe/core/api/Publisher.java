@@ -4,7 +4,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.reactiveminds.txpipe.api.TransactionResult;
-import org.reactiveminds.txpipe.core.Event;
+import org.reactiveminds.txpipe.core.dto.Event;
 
 public interface Publisher {
 
