@@ -104,6 +104,8 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	private boolean recordEventAsync;
 	@Value("${txpipe.event.recordAsync.maxThreads:2}")
 	private int recordEventAsyncMaxThreads;
+	@Value("${txpipe.broker.recordExpirySecs:60}")
+	private long recordExpirySecs;
 	
 	private PartitionAwareMessageListenerContainer container;
 	@Autowired
@@ -127,7 +129,8 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		if(recordEventAsync) {
 			eventThread = Executors.newFixedThreadPool(recordEventAsyncMaxThreads, (r)-> new Thread(r, "SubcriberEventRecorder"));
 		}
-		addFilter(k -> pipeline.equals(KafkaPublisher.extractPipeline(k)));
+		addFilter(k -> pipeline.equals(KafkaPublisher.extractPipeline(k.key())));
+		addFilter(k -> System.currentTimeMillis() - k.timestamp() < TimeUnit.SECONDS.toMillis(recordExpirySecs));
 		
 		container = factory.getBean(PartitionAwareMessageListenerContainer.class, listeningTopic, getListenerId(), concurreny, new ContainerErrHandler());
 		container.setupMessageListener(this);
@@ -209,7 +212,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 			recordEvent(event, new CommitFailedException("Rolled back on timeout", null));
 		}
 	}
-	private volatile Predicate<String> filters;
+	private volatile Predicate<ConsumerRecord<String, String>> filters;
 	/**
 	 * Add another {@linkplain AllowedTransactionFilter} AND-ed to existing, if any.
 	 * @param f
@@ -222,9 +225,9 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	 * @param key
 	 * @return
 	 */
-	private boolean isPassFilter(String key) {
+	private boolean isPassFilter(ConsumerRecord<String, String> data) {
 		try {
-			return filters.test(key);
+			return filters.test(data);
 		} catch (Exception e) {
 			CLOG.warn("Err on record key filtering - "+e.getMessage());
 			CLOG.debug("", e);
@@ -236,7 +239,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 			org.apache.kafka.clients.consumer.Consumer<?, ?> consumer) {
 		
 		try {
-			if(isPassFilter(data.key())) {
+			if(isPassFilter(data)) {
 				doOnMessage(data);
 			}
 		} 

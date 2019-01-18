@@ -1,10 +1,12 @@
 package org.reactiveminds.txpipe.core.engine;
 
 import java.io.UncheckedIOException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -15,6 +17,7 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.reactiveminds.txpipe.api.TransactionService;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.Publisher;
 import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.Subscriber;
 import org.reactiveminds.txpipe.core.dto.Command;
@@ -41,8 +44,7 @@ import org.springframework.util.StringUtils;
 class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerAwareMessageListener<String,String> {
 
 	static final Logger log = LoggerFactory.getLogger("ComponentManager");
-	@Autowired
-	BeanFactory beans;
+	
 	@Autowired
 	KafkaTemplate<String, String> kafkaTemplate;
 	@Autowired
@@ -50,8 +52,9 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	@Autowired
 	BeanFactory beanFactory;
 	@Autowired
-	KafkaPublisher pubAdmin;
-	
+	Publisher pubAdmin;
+	@Autowired
+	KafkaAdminSupport admin;
 	
 	@Value("${txpipe.core.orchestrationTopic:managerTopic}") 
 	private String orchestrationTopic;
@@ -62,36 +65,79 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	
 	@Value("${txpipe.core.instanceId}")
 	private String groupId;
+	private CountDownLatch startupLatch;
 	
-	@PostConstruct
-	private void onStart() {
-		container = beans.getBean(PartitionAwareMessageListenerContainer.class, orchestrationTopic, groupId, 1, new ErrorHandler() {
+	private void startContainer() {
+		container = beanFactory.getBean(PartitionAwareMessageListenerContainer.class, orchestrationTopic, groupId, 1, new ErrorHandler() {
 			
 			@Override
 			public void handle(Exception t, ConsumerRecord<?, ?> data) {
-				log.error("Registry manager error on consume "+data, t);
+				log.error("Error on command consume "+data, t);
 			}
 		});
 		container.setupMessageListener(this);
 		container.start();
-		
-		log.info("Connecting to cluster with instanceId '"+groupId+"'. This can take some time ..");
+		log.info("Joining cluster with instanceId '"+groupId+"' ..");
 		
 		container.getPartitionListener().awaitOnReady(30, TimeUnit.SECONDS);
 		if(container.getPartitionListener().getSnapshot().isEmpty())
-			throw new ConfigurationException("No orchestration partitions assigned! Is 'txpipe.instanceId' configured to be unique across cluster?");
-		
+			throw new ConfigurationException("No orchestration partitions assigned! Is 'txpipe.core.instanceId' configured to be unique across cluster? You may consider try after sometime to allow some time to balance");
+	}
+	private void loadMetadata() {
 		if (loadDefOnStart) {
 			log.info("Start reading existing metadata ..");
 			AllDefinitionsLoader loader = new AllDefinitionsLoader(orchestrationTopic);
-			loader.run();
-			loader.allDefinitions.forEach(def -> doPut(def));
-			register.values().forEach(p -> startPipeline(p));
-			log.info("Loaded discovered definitions into registry");
+			try {
+				loader.run();
+				loader.allDefinitions.forEach(def -> doPut(def));
+				log.info("Loaded discovered definitions into registry");
+			} finally {
+				
+			}
 		}
 	}
-	@Autowired
-	KafkaAdminSupport adminSupport;
+	private void startPipelines() {
+		register.values().forEach(p -> startPipeline(p, true));
+	}
+	private void verifyOTPartitions() {
+		admin.createTopic(orchestrationTopic, 1, (short) 1);
+		int c = admin.getPartitionCount(orchestrationTopic);
+		if(c != 1)
+			throw new ConfigurationException(orchestrationTopic +" should be a single partition topic. You may consider try after sometime to allow some time to balance");
+	}
+	private void verifyInstanceUnique() {
+		if(!admin.isGroupIdUnique(groupId, orchestrationTopic))
+			throw new ConfigurationException("'txpipe.core.instanceId' should configured to be unique across cluster. You may consider try after sometime to allow some time to balance");
+	}
+	private void verifyConsumerLag() {
+		long lag = admin.getTotalLag(orchestrationTopic, groupId);
+		if(lag > 0) {
+			log.warn(orchestrationTopic+" command topic lag: "+lag+". Startup may take some time to refresh");
+			try {
+				startupLatch = new CountDownLatch(BigDecimal.valueOf(lag).intValueExact());
+			} catch (ArithmeticException e) {
+				log.warn("To large a lag to countdown for! Skipping .."+lag);
+			}
+		}
+	}
+	@PostConstruct
+	private void onStart() {
+		verifyOTPartitions();
+		verifyInstanceUnique();
+		verifyConsumerLag();
+		loadMetadata();
+		startContainer();
+		if(startupLatch != null) {
+			try {
+				startupLatch.await(5, TimeUnit.MINUTES);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+		}
+		//start after processing all pending commands
+		startPipelines();
+	}
+	
 	
 	@PreDestroy
 	private void destroy() {
@@ -99,11 +145,11 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		ProcessorRegistry.instance().destroy();
 	}
 	private void startThenPut(CreatePayload def) {
-		startPipeline(def);
+		startPipeline(def, false);
 		doPut(def);
 	}
-	private void startPipeline(CreatePayload def) {
-		def.getComponents().forEach(c -> startComponent(c, def.getPipelineId()));
+	private void startPipeline(CreatePayload def, boolean startIfNotStarted) {
+		def.getComponents().forEach(c -> startComponent(c, def.getPipelineId(), startIfNotStarted));
 	}
 	private void doPut(CreatePayload def) {
 		if (def != null && StringUtils.hasText(def.getPipelineId()) && !def.getComponents().isEmpty()) {
@@ -187,6 +233,8 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		}
 		finally {
 			acknowledgment.acknowledge();
+			if(startupLatch != null)
+				startupLatch.countDown();
 		}
 		
 	}
@@ -199,9 +247,9 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	private boolean isTxnBeanExists(String bean) {
 		return beanFactory.containsBean(bean) && beanFactory.isTypeMatch(bean, TransactionService.class);
 	}
-	private void startComponent(ComponentDef defn, String pipe) {
+	private void startComponent(ComponentDef defn, String pipe, boolean startIfNotStarted) {
 		if(isTxnBeanExists(defn.getComponentId())) {
-			startConsumers(defn, pipe);
+			startConsumers(defn, pipe, startIfNotStarted);
 		}
 		else {
 			log.debug("No TransactionService bean found for component - " + defn.getComponentId());
@@ -213,8 +261,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	 * @param defn
 	 * @param pipe
 	 */
-	private void startConsumers(ComponentDef defn, String pipe) {
-		
+	private void startConsumers(ComponentDef defn, String pipe, boolean startIfNotStarted) {
 		Subscriber commitSub = (Subscriber) beanFactory.getBean(ServiceManager.COMMIT_PROCESSOR_BEAN_NAME, defn.getCommitQueue());
 		commitSub.setCommitLink(defn.getCommitQueueNext());
 		commitSub.setRollbackLink(defn.getRollbackQueuePrev());
@@ -222,6 +269,11 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		commitSub.setPipelineId(pipe);
 		if(StringUtils.isEmpty(defn.getRollbackQueuePrev())){
 			((CommitProcessor) commitSub).setInitialComponent();
+		}
+		final String key = commitSub.getListenerId();
+		if(startIfNotStarted && ProcessorRegistry.instance().isAlreadyPresent(key)) {
+			log.info("Not restarting "+key);
+			return;
 		}
 		Subscriber rollbackSub = null;
 		if(StringUtils.hasText(defn.getRollbackQueue())) {
@@ -231,7 +283,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 			rollbackSub.setPipelineId(pipe);
 		}
 		
-		String key = commitSub.getListenerId();
+		
 		createTopicsIfNotExist(defn);
 		ProcessorRegistry.instance().removeIfPresent(key);
 		
@@ -250,16 +302,16 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	}
 	private void createTopicsIfNotExist(ComponentDef defn) {
 		if(StringUtils.hasText(defn.getCommitQueue()))
-			pubAdmin.createTopic(defn.getCommitQueue(), partition, replica);
+			admin.createTopic(defn.getCommitQueue(), partition, replica);
 		
 		if(StringUtils.hasText(defn.getCommitQueueNext()))
-			pubAdmin.createTopic(defn.getCommitQueueNext(), partition, replica);
+			admin.createTopic(defn.getCommitQueueNext(), partition, replica);
 		
 		if(StringUtils.hasText(defn.getRollbackQueue()))
-			pubAdmin.createTopic(defn.getRollbackQueue(), partition, replica);
+			admin.createTopic(defn.getRollbackQueue(), partition, replica);
 		
 		if(StringUtils.hasText(defn.getRollbackQueuePrev()))
-			pubAdmin.createTopic(defn.getRollbackQueuePrev(), partition, replica);
+			admin.createTopic(defn.getRollbackQueuePrev(), partition, replica);
 	}
 	
 	/**
@@ -283,10 +335,9 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		@Override
 		public void run() {
 			KafkaTopicIterator iter = null;
-			//log.info("Consumers for " + queryTopic + " - " + adminSupport.listConsumers(queryTopic));
 			try 
 			{
-				iter = beans.getBean(KafkaTopicIterator.class, queryTopic);
+				iter = beanFactory.getBean(KafkaTopicIterator.class, queryTopic);
 				iter.run();
 				allDefinitions.clear();
 				while (iter.hasNext()) {

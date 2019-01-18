@@ -2,6 +2,7 @@ package org.reactiveminds.txpipe.core.engine;
 
 import java.io.Closeable;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +15,7 @@ import java.util.stream.StreamSupport;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
+import org.reactiveminds.txpipe.err.BrokerException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.core.ConsumerFactory;
 /**
@@ -58,11 +60,15 @@ class KafkaTopicIterator implements Runnable, Iterator<List<String>>, Closeable{
 			initRan = true;
 		} 
 		catch (Exception e) {
-			DefaultComponentManager.log.error("Loading of existing definitions failed on startup!", e);
+			throw new BrokerException("Initialization of iterator failed", e);
 		}
 		
 	}
 	
+	public Map<TopicPartition, Long> getEndOffsets() {
+		return Collections.unmodifiableMap(endOffsets);
+	}
+
 	private boolean hasPendingMessages() {
 		return endOffsets.entrySet().stream().anyMatch(e -> e.getValue() > consumer.position(e.getKey()));
 	}

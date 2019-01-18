@@ -8,6 +8,10 @@ public class BrokerException extends NestedRuntimeException {
 		super(msg, cause);
 	}
 
+	public BrokerException(String msg) {
+		super(msg);
+	}
+
 	/**
 	 * 
 	 */

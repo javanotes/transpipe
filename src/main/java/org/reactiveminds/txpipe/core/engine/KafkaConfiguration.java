@@ -1,6 +1,5 @@
 package org.reactiveminds.txpipe.core.engine;
 
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -37,7 +36,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @EnableConfigurationProperties(KafkaProperties.class)
-class KafkaConfiguration implements KafkaAdminSupport {
+class KafkaConfiguration  {
 
 	private final KafkaProperties properties;
 	@Value("${txpipe.core.instanceId}")
@@ -48,7 +47,7 @@ class KafkaConfiguration implements KafkaAdminSupport {
 		this.properties = properties;
 	}
 	
-	private static class ConsumerOffsetWrapper{
+	static class ConsumerOffsetWrapper{
 		private Map<String, Set<String>> unwrapped = new HashMap<>();
 		public void add(ListConsumerGroupOffsetsResult groupOff, String group) {
 			try 
@@ -57,10 +56,10 @@ class KafkaConfiguration implements KafkaAdminSupport {
 				.keySet().stream().map(t -> t.topic()).collect(Collectors.toSet());
 				
 				topics.forEach(t -> {
-					if(!unwrapped.containsKey(t))
-						unwrapped.put(t, new HashSet<>());
+					if(!getUnwrapped().containsKey(t))
+						getUnwrapped().put(t, new HashSet<>());
 					
-					unwrapped.get(t).add(group);
+					getUnwrapped().get(t).add(group);
 				});
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
@@ -68,27 +67,14 @@ class KafkaConfiguration implements KafkaAdminSupport {
 				throw new BrokerException("While invoking partitionsToOffsetAndMetadata", e);
 			}
 		}
-	}
-	/* (non-Javadoc)
-	 * @see org.reactiveminds.txpipe.core.broker.KafkaAdminSupport#listConsumers(java.lang.String)
-	 */
-	@Override
-	public Set<String> listConsumers(String topic) {
-		try 
-		{
-			ConsumerOffsetWrapper wrapper = new ConsumerOffsetWrapper();
-			admin().listConsumerGroups().all().get()
-			.forEach(c -> wrapper.add(admin().listConsumerGroupOffsets(c.groupId()), c.groupId()));
-			
-			return wrapper.unwrapped.containsKey(topic) ? wrapper.unwrapped.get(topic) : Collections.emptySet();
-			
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		} catch (ExecutionException e) {
-			throw new BrokerException("While invoking listConsumerGroups", e);
+		public Map<String, Set<String>> getUnwrapped() {
+			return unwrapped;
 		}
-		return Collections.emptySet();
+		public void setUnwrapped(Map<String, Set<String>> unwrapped) {
+			this.unwrapped = unwrapped;
+		}
 	}
+	
 	@Bean
     public ProducerFactory<String, String> producerFactory() {
         Map<String, Object> configProps = new HashMap<>();
@@ -175,7 +161,11 @@ class KafkaConfiguration implements KafkaAdminSupport {
 	@Bean
 	@Scope(scopeName = ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 	@Lazy
-	KafkaTopicIterator queryTopic(String queryTopic) {
+	KafkaTopicIterator topicIterator(String queryTopic) {
 		return new KafkaTopicIterator(queryTopic);
+	}
+	@Bean
+	KafkaAdminSupport adminSupport() {
+		return new KafkaAdminSupportImpl();
 	}
 }

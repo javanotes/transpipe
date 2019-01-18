@@ -1,18 +1,11 @@
 package org.reactiveminds.txpipe.core.engine;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import org.apache.kafka.clients.admin.AdminClient;
-import org.apache.kafka.clients.admin.ListTopicsOptions;
-import org.apache.kafka.clients.admin.NewTopic;
-import org.apache.kafka.clients.admin.TopicDescription;
-import org.apache.kafka.common.utils.Utils;
 import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.core.api.Publisher;
 import org.reactiveminds.txpipe.core.dto.Event;
@@ -40,9 +33,6 @@ public class KafkaPublisher implements Publisher {
 	
 	@Autowired
 	RequestReplyKafkaTemplate replyKafka;
-	
-	@Autowired
-	AdminClient admin;
 	
 	@Override
 	public String publish(String message, String queue, String pipeline) {
@@ -99,59 +89,6 @@ public class KafkaPublisher implements Publisher {
 	@Override
 	public Future<?> publishAsync(Event event) {
 		return replyKafka.send(event.getDestination(), nextKey(event), JsonMapper.serialize(event));
-	}
-	private boolean isTopicExists(String topic) {
-		ListTopicsOptions l = new ListTopicsOptions();
-		l.listInternal(false);
-		try {
-			return admin.listTopics(l).names().get(30, TimeUnit.SECONDS).contains(topic);
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		} catch (Exception e) {
-			log.warn("", e);
-		}
-		return false; 
-	}
-	/**
-	 * Create topic
-	 * @param topicName
-	 * @param partition
-	 * @param replica
-	 */
-	public void createTopic(String topicName, int partition, short replica) {
-		ListTopicsOptions l = new ListTopicsOptions();
-		l.listInternal(false);
-		if(!isTopicExists(topicName)) {
-			try {
-				admin.createTopics(Arrays.asList(new NewTopic(topicName, partition, replica))).all().get();
-				log.info("Topic created - "+topicName);
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-			} catch (ExecutionException e) {
-				throw new BrokerException("Topic creation unsuccessful", e.getCause());
-			}
-		}
-		
-	}
-	/**
-	 * Get the partition for the given string key.
-	 * @param topic
-	 * @param key
-	 * @return
-	 */
-	public int partitionForUtf8Key(String topic, String key) {
-		try {
-			TopicDescription desc = admin.describeTopics(Arrays.asList(topic)).all().get().get(topic);
-			if(desc != null) {
-				int len = desc.partitions().size();
-				return Utils.toPositive(Utils.murmur2(key.getBytes(StandardCharsets.UTF_8))) % len;
-			}
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		} catch (ExecutionException e) {
-			throw new BrokerException("Unable to fetch topic partition", e.getCause());
-		}
-		return -1;
 	}
 	
 	private String sendAndReceive(Event event, TimeUnit unit, long timeout) throws TimeoutException {

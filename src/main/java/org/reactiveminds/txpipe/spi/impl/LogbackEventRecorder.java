@@ -11,6 +11,7 @@ import javax.annotation.PreDestroy;
 
 import org.reactiveminds.txpipe.spi.EventRecord;
 import org.reactiveminds.txpipe.spi.EventRecorder;
+import org.reactiveminds.txpipe.utils.Helper;
 import org.reactiveminds.txpipe.utils.TimeChangeNotifier;
 import org.reactiveminds.txpipe.utils.TimeChangeNotifier.HourlyNotifier;
 import org.slf4j.LoggerFactory;
@@ -33,12 +34,18 @@ import ch.qos.logback.core.rolling.TimeBasedRollingPolicy;
  */
 public class LogbackEventRecorder implements EventRecorder {
 
-	private final static String ROLLING_FOLDER_PATTERN = "/%d{yyyy-MM-dd}/";
-	private final static String ROLLING_FILE_PATTERN = "-%d{HH}.log";
+	private static final String FOLDER_PATTERN = "yyyy-MM-dd";
+	private static final String FILE_PATTERN = "{HH}.log";
+	private final static String ROLLING_FOLDER_PATTERN = "/%d{"+FOLDER_PATTERN+"}/";
+	private final static String ROLLING_FILE_PATTERN = "-%d"+FILE_PATTERN;
 	private static final String LOGGER_NAME = "EventLog";
 	
 	private static String folderName() {
-		return new SimpleDateFormat("yyyyMMddHH").format(new Date());
+		return new SimpleDateFormat(FOLDER_PATTERN).format(new Date());
+	}
+	private static String fileSuffix() {
+		String dtFmt = Helper.extractWithinTags(FILE_PATTERN, '{', '}');
+		return Helper.replaceWithinTags(FILE_PATTERN, new SimpleDateFormat(dtFmt).format(new Date()), '{', '}');
 	}
 
 	@Value("${txpipe.event.recorder.logDir:./logs/events/}")
@@ -48,11 +55,11 @@ public class LogbackEventRecorder implements EventRecorder {
 	@Value("${txpipe.event.recorder.logPattern:%date %msg%n}")
 	private String logPattern;
 	
-	@Value("${txpipe.event.enableTimer:false}")
+	@Value("${txpipe.event.enableTimer:true}")
 	private boolean enableTimer;
 
 	private TimeChangeNotifier timer;
-	private Logger eventLogger = null;
+	private volatile Logger eventLogger = null;
 	
 	@PostConstruct
 	private void onInit() {
@@ -80,14 +87,14 @@ public class LogbackEventRecorder implements EventRecorder {
 
 	private void configureFileLogger() {
 		if (enableTimer) {
-			eventLogger = createLogger(LOGGER_NAME, loggingDir + folderName() + File.separator + loggingFile + ".log", logPattern);
+			eventLogger = createLogger(LOGGER_NAME, loggingDir + folderName() + File.separator + loggingFile + "_"+fileSuffix(), logPattern);
 		} else {
 			eventLogger = createRollingLogger(LOGGER_NAME, loggingFile, loggingDir, logPattern);
 		}
 	}
 
 	/**
-	 * Use the rolling file appender
+	 * Use the rolling file appender. TODO: use rolling file?
 	 * 
 	 * @param loggerName
 	 * @param filePath

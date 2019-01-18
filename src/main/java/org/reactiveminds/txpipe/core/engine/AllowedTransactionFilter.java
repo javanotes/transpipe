@@ -2,6 +2,8 @@ package org.reactiveminds.txpipe.core.engine;
 
 import java.util.function.Predicate;
 
-interface AllowedTransactionFilter extends Predicate<String>{
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+
+interface AllowedTransactionFilter extends Predicate<ConsumerRecord<String, String>>{
 	
 }

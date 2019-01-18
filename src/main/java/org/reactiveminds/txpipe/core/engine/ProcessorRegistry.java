@@ -71,6 +71,14 @@ class ProcessorRegistry {
 			proc.stop();
 		}
 	}
+	/**
+	 * 
+	 * @param key
+	 * @return
+	 */
+	public boolean isAlreadyPresent(String key) {
+		return processorRegistry.containsKey(key);
+	}
 	public void pause(String pipeline) {
 		synchronized (processorRegistry) {
 			processorRegistry.entrySet().stream()
@@ -176,7 +184,7 @@ class ProcessorRegistry {
 			//TODO: if node goes down before paused component is resumed
 			//it will get processed on restart (wrong)
 			//we need to persist the filters?
-			commit.addFilter(k -> !txnId.equals(KafkaPublisher.extractTxnId(k)));
+			commit.addFilter(k -> !txnId.equals(KafkaPublisher.extractTxnId(k.key())));
 			if(rollback != null) {
 				log.warn("["+rollback.getListenerId()+"] Forcing rollback for transaction : "+txnId);
 				Event e = new Event();
