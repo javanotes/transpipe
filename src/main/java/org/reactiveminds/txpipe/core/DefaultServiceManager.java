@@ -98,6 +98,6 @@ class DefaultServiceManager implements ServiceManager{
 	public void abort(String txnId) {
 		Command c = new Command(Code.ABORT);
 		c.setPayload(txnId);
-		kafkaTemplate.send(orchestrationTopic, JsonMapper.serialize(c));
+		kafkaTemplate.send(orchestrationTopic+ABORT_TOPIC_SUFFIX, JsonMapper.serialize(c));
 	}
 }

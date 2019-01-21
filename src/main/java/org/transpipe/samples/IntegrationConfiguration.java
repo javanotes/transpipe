@@ -10,9 +10,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
+/**
+ * This class is an example of how the configuration class for an integration project would
+ * look like.
+ * @author Sutanu_Dalui
+ *
+ */
 @Configuration
 @Import(EngineConfiguration.class)
-public class Config {
+public class IntegrationConfiguration {
 
 	private static final Logger log = LoggerFactory.getLogger("Service_Log");
 	@Bean

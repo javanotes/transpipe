@@ -5,6 +5,7 @@ import java.util.concurrent.TimeoutException;
 
 public interface ServiceManager {
 
+	String ABORT_TOPIC_SUFFIX = "__abort";
 	/**
 	 * Invoke a new transaction pipeline. This is the service method to be invoked from REST endpoints
 	 * @param requestJson

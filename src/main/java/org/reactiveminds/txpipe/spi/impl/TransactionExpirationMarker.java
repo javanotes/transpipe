@@ -24,9 +24,9 @@ public class TransactionExpirationMarker extends ExpirationListener<String> impl
 	private SelfExpiringHashMap<String, Object> expiryCache;
 	
 	private final Object marker = new Object();
-	@Value("${txpipe.core.abortOnTimeout:true}")
+	@Value("${txpipe.core.abortTxnOnTimeout:true}")
 	private boolean abortOnTimeout;
-	@Value("${txpipe.core.abortOnTimeout.expiryMillis:5000}")
+	@Value("${txpipe.core.abortTxnOnTimeout.expiryMillis:5000}")
 	private long expiryMillis;
 	
 	@PostConstruct

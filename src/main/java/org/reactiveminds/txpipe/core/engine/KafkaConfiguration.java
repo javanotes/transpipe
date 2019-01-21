@@ -136,7 +136,7 @@ class KafkaConfiguration  {
     }
 	/**
 	 * Get a consumer listener container
-	 * @param topic
+	 * @param primaryTopic
 	 * @param groupId
 	 * @param concurrency
 	 * @return
@@ -145,19 +145,19 @@ class KafkaConfiguration  {
 	@Lazy
 	@Bean
     public PartitionAwareMessageListenerContainer 
-      kafkaListenerContainer(String topic, String groupId, int concurrency, ErrorHandler errHandler) {
-    
-		ContainerProperties props = new ContainerProperties(topic);
+      kafkaListenerContainer(String primaryTopic, String groupId, int concurrency, ErrorHandler errHandler) {
+		ContainerProperties props = new ContainerProperties(primaryTopic);
 		props.setAckMode(AckMode.MANUAL_IMMEDIATE);
 		props.setGroupId(groupId);
 		props.setErrorHandler(errHandler);
-		PartitionListener partListener = new PartitionListener(topic);
+		PartitionListener partListener = new PartitionListener(primaryTopic);
 		props.setConsumerRebalanceListener(partListener);
 		PartitionAwareMessageListenerContainer container =  new PartitionAwareMessageListenerContainer(consumerFactory(), props, partListener);
 		container.setConcurrency(concurrency);
-		container.setBeanName(topic);
+		container.setBeanName(primaryTopic);
 		return container;
     }
+	
 	@Bean
 	@Scope(scopeName = ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 	@Lazy

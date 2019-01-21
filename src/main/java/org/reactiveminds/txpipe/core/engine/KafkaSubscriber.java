@@ -13,9 +13,12 @@ import org.reactiveminds.txpipe.api.TransactionService;
 import org.reactiveminds.txpipe.core.api.Subscriber;
 import org.reactiveminds.txpipe.core.dto.Event;
 import org.reactiveminds.txpipe.err.CommitFailedException;
+import org.reactiveminds.txpipe.err.StartupIntitializationException;
+import org.reactiveminds.txpipe.spi.DiscoveryAgent;
 import org.reactiveminds.txpipe.spi.EventRecord;
 import org.reactiveminds.txpipe.spi.EventRecorder;
 import org.reactiveminds.txpipe.spi.TransactionMarker;
+import org.reactiveminds.txpipe.spi.DiscoveryAgent.SpringContextDiscoveryAgent;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +29,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.AcknowledgingConsumerAwareMessageListener;
 import org.springframework.kafka.listener.ErrorHandler;
 import org.springframework.kafka.support.Acknowledgment;
+import org.springframework.util.StringUtils;
 
 abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareMessageListener<String,String> {
 
@@ -106,7 +110,8 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	private int recordEventAsyncMaxThreads;
 	@Value("${txpipe.broker.recordExpirySecs:60}")
 	private long recordExpirySecs;
-	
+	@Value("${txpipe.core.discoveryAgent:}")
+	private String discoveryService;
 	private PartitionAwareMessageListenerContainer container;
 	@Autowired
 	BeanFactory factory;
@@ -121,6 +126,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	}
 	@Autowired
 	KafkaTemplate<String, String> pub;
+	private DiscoveryAgent discovery;
 	
 	private ExecutorService eventThread;
 	private volatile boolean started = false;
@@ -131,6 +137,12 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		}
 		addFilter(k -> pipeline.equals(KafkaPublisher.extractPipeline(k.key())));
 		addFilter(k -> System.currentTimeMillis() - k.timestamp() < TimeUnit.SECONDS.toMillis(recordExpirySecs));
+		try {
+			discovery = StringUtils.hasText(discoveryService) ? (DiscoveryAgent) Class.forName(discoveryService).newInstance() : new SpringContextDiscoveryAgent();
+		} catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
+			PLOG.error("Discovery class not loaded", e);
+			throw new StartupIntitializationException("Discovery class not loaded", e);
+		}
 		
 		container = factory.getBean(PartitionAwareMessageListenerContainer.class, listeningTopic, getListenerId(), concurreny, new ContainerErrHandler());
 		container.setupMessageListener(this);
@@ -190,7 +202,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	 */
 	final String process(Event event) {
 		//the bean should be there, as the starting the components will depend on it
-		TransactionService service = (TransactionService) factory.getBean(componentId);
+		TransactionService service = discovery.getServiceById(componentId);
 		if(isCommitMode) {
 			return service.commit(event.getTxnId(), event.getPayload());
 		}
@@ -244,7 +256,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 			}
 		} 
 		finally {
-			ack.acknowledge();//no message retry
+			ack.acknowledge();//no message retry as this is a transactional system
 		}
 	}
 	private void doOnMessage(ConsumerRecord<String, String> data) {

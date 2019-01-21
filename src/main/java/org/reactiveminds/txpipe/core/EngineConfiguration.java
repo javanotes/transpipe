@@ -6,7 +6,10 @@ import org.reactiveminds.txpipe.spi.EventRecorder;
 import org.reactiveminds.txpipe.spi.TransactionMarker;
 import org.reactiveminds.txpipe.spi.impl.LogbackEventRecorder;
 import org.reactiveminds.txpipe.spi.impl.TransactionExpirationMarker;
+import org.springframework.beans.BeansException;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -19,7 +22,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Import({BrokerEngineConfiguration.class})
-public class EngineConfiguration {
+public class EngineConfiguration implements ApplicationContextAware{
 	@Bean
 	RestServer server() {
 		return new RestServer();
@@ -38,4 +41,34 @@ public class EngineConfiguration {
 	EventRecorder eventRecorder() {
 		return new LogbackEventRecorder();
 	}
+	private static ApplicationContext springContext;
+	@Override
+	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+		springContext = applicationContext;
+	}
+	/**
+	 * 
+	 * @param name
+	 * @param requiredType
+	 * @return
+	 */
+	public static <T> T getMangedBeanOfName(String name, Class<T> requiredType) {
+		if(springContext == null)
+			throw new IllegalStateException("Context not initialized!");
+		
+		return springContext.getBean(name, requiredType);
+	}
+	public static Object getMangedBeanOfName(String name) {
+		if(springContext == null)
+			throw new IllegalStateException("Context not initialized!");
+		
+		return springContext.getBean(name);
+	}
+	public static <T> T getMangedBeanOfType(Class<T> requiredType) {
+		if(springContext == null)
+			throw new IllegalStateException("Context not initialized!");
+		
+		return springContext.getBean(requiredType);
+	}
+	
 }

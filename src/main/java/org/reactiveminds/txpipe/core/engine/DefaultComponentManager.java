@@ -1,7 +1,6 @@
 package org.reactiveminds.txpipe.core.engine;
 
 import java.io.UncheckedIOException;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,6 +26,7 @@ import org.reactiveminds.txpipe.core.dto.PausePayload;
 import org.reactiveminds.txpipe.core.dto.ResumePayload;
 import org.reactiveminds.txpipe.core.dto.StopPayload;
 import org.reactiveminds.txpipe.err.ConfigurationException;
+import org.reactiveminds.txpipe.err.StartupIntitializationException;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,26 +61,53 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	@Value("${txpipe.core.loadRegisterOnStart:true}") 
 	private boolean loadDefOnStart;
 	private ConcurrentMap<String, CreatePayload> register = new ConcurrentHashMap<>();
-	private PartitionAwareMessageListenerContainer container;
+	private PartitionAwareMessageListenerContainer commandListener, abortListener;
+	@Value("${txpipe.core.readAbortOnStartup.maxWaitSecs:60}")
+	private long readAbortWait;
 	
 	@Value("${txpipe.core.instanceId}")
 	private String groupId;
 	private CountDownLatch startupLatch;
-	
+	private String abortTopic() {
+		return orchestrationTopic+ServiceManager.ABORT_TOPIC_SUFFIX;
+	}
+	private void startAbortListener() {
+		int abortLag = (int) admin.getTotalLag(abortTopic(), groupId);
+		startupLatch = new CountDownLatch(abortLag);
+		abortListener = beanFactory.getBean(PartitionAwareMessageListenerContainer.class, abortTopic(), groupId, 1, new ErrorHandler() {
+			
+			@Override
+			public void handle(Exception t, ConsumerRecord<?, ?> data) {
+				log.error("Error on abort consume "+data, t);
+			}
+		});
+		abortListener.setupMessageListener(this);
+		abortListener.start();
+		try {
+			boolean b = startupLatch.await(readAbortWait, TimeUnit.SECONDS);
+			if(!b)
+				throw new StartupIntitializationException(
+						"Abort listener did not complete in time. This can cause aborted transactions to fire unexpectedly. Restart node until this error goes away");
+			
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
+	}
 	private void startContainer() {
-		container = beanFactory.getBean(PartitionAwareMessageListenerContainer.class, orchestrationTopic, groupId, 1, new ErrorHandler() {
+		startAbortListener();
+		commandListener = beanFactory.getBean(PartitionAwareMessageListenerContainer.class, orchestrationTopic, groupId, 1, new ErrorHandler() {
 			
 			@Override
 			public void handle(Exception t, ConsumerRecord<?, ?> data) {
 				log.error("Error on command consume "+data, t);
 			}
 		});
-		container.setupMessageListener(this);
-		container.start();
+		commandListener.setupMessageListener(this);
+		commandListener.start();
 		log.info("Joining cluster with instanceId '"+groupId+"' ..");
 		
-		container.getPartitionListener().awaitOnReady(30, TimeUnit.SECONDS);
-		if(container.getPartitionListener().getSnapshot().isEmpty())
+		commandListener.getPartitionListener().awaitOnReady(30, TimeUnit.SECONDS);
+		if(commandListener.getPartitionListener().getSnapshot().isEmpty())
 			throw new ConfigurationException("No orchestration partitions assigned! Is 'txpipe.core.instanceId' configured to be unique across cluster? You may consider try after sometime to allow some time to balance");
 	}
 	private void loadMetadata() {
@@ -109,31 +136,14 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		if(!admin.isGroupIdUnique(groupId, orchestrationTopic))
 			throw new ConfigurationException("'txpipe.core.instanceId' should configured to be unique across cluster. You may consider try after sometime to allow some time to balance");
 	}
-	private void verifyConsumerLag() {
-		long lag = admin.getTotalLag(orchestrationTopic, groupId);
-		if(lag > 0) {
-			log.warn(orchestrationTopic+" command topic lag: "+lag+". Startup may take some time to refresh");
-			try {
-				startupLatch = new CountDownLatch(BigDecimal.valueOf(lag).intValueExact());
-			} catch (ArithmeticException e) {
-				log.warn("To large a lag to countdown for! Skipping .."+lag);
-			}
-		}
-	}
+	
 	@PostConstruct
 	private void onStart() {
 		verifyOTPartitions();
 		verifyInstanceUnique();
-		verifyConsumerLag();
 		loadMetadata();
 		startContainer();
-		if(startupLatch != null) {
-			try {
-				startupLatch.await(5, TimeUnit.MINUTES);
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-			}
-		}
+		
 		//start after processing all pending commands
 		startPipelines();
 	}
@@ -141,7 +151,8 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	
 	@PreDestroy
 	private void destroy() {
-		container.stop();
+		abortListener.stop();
+		commandListener.stop();
 		ProcessorRegistry.instance().destroy();
 	}
 	private void startThenPut(CreatePayload def) {
@@ -200,8 +211,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	private void doAbort(Command c) {
 		ProcessorRegistry.instance().abort(c.getPayload());
 	}
-	private void switchCommand(String command) {
-		Command c = JsonMapper.deserialize(command, Command.class);
+	private void switchCommand(Command c) {
 		switch(c.getCommand()) {
 			case START:
 				doStart(c);
@@ -215,26 +225,29 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 			case STOP:
 				doStop(c);
 				break;
-			case ABORT:
-				doAbort(c);
-				break;
 			default:
-				log.error("Not a valid command! '"+command+"'. If previous version data lying in orchestration topic, use a new topic");
+				log.error("Not a valid command! '"+c+"'. If previous version data lying in orchestration topic, use a new topic");
 				break;
 		}
 	}
 	
 	@Override
 	public void onMessage(ConsumerRecord<String, String> data, Acknowledgment acknowledgment, Consumer<?, ?> consumer) {
-		try {
-			switchCommand(data.value());
+		try 
+		{
+			Command c = JsonMapper.deserialize(data.value(), Command.class);
+			if(data.topic().equals(abortTopic())) {
+				startupLatch.countDown();
+				doAbort(c);
+			}
+			else
+				switchCommand(c);
+			
 		} catch(Exception e) {
 			log.error("Irrecoverable error at component manager ", e);
 		}
 		finally {
 			acknowledgment.acknowledge();
-			if(startupLatch != null)
-				startupLatch.countDown();
 		}
 		
 	}
