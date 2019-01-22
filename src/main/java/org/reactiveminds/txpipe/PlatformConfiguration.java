@@ -10,6 +10,7 @@ import org.springframework.beans.BeansException;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -61,5 +62,16 @@ public class PlatformConfiguration implements ApplicationContextAware{
 		
 		return springContext.getBean(requiredType);
 	}
-	
+	public static String getApplicationProperty(String prop) {
+		if(springContext == null)
+			throw new IllegalStateException("Context not initialized!");
+		
+		return ((ConfigurableApplicationContext)springContext).getEnvironment().getProperty(prop);
+	}
+	public static String getApplicationProperty(String prop, String defaultVal) {
+		if(springContext == null)
+			throw new IllegalStateException("Context not initialized!");
+		
+		return ((ConfigurableApplicationContext)springContext).getEnvironment().getProperty(prop, defaultVal);
+	}
 }
