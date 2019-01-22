@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core.engine;
+package org.reactiveminds.txpipe.broker;
 
 import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Scope;
 
 @Configuration
 @Import(KafkaConfiguration.class)
-public class BrokerEngineConfiguration {
+public class ComponentManagerConfiguration {
 
 	@Bean
 	public ComponentManager componentRegistry() {

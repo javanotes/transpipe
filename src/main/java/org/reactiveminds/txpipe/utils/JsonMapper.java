@@ -3,10 +3,13 @@ package org.reactiveminds.txpipe.utils;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 
+import org.reactiveminds.txpipe.api.TransactionResult;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 public class JsonMapper {
 
@@ -18,6 +21,15 @@ public class JsonMapper {
 				.enable(SerializationFeature.WRITE_ENUMS_USING_TO_STRING)
 				.enable(DeserializationFeature.READ_ENUMS_USING_TO_STRING)
 				;
+	}
+	public static String makeResponse(TransactionResult result) {
+		ObjectNode node = Wrapper.mapper.createObjectNode();
+		node.put(result.getTxnId(), result.name());
+		try {
+			return Wrapper.mapper.writeValueAsString(node);
+		} catch (JsonProcessingException e) {
+			throw new UncheckedIOException(e);
+		}
 	}
 	/**
 	 * Serialize to a Json string.
@@ -44,5 +56,11 @@ public class JsonMapper {
 		} catch (Exception e) {
 			throw new UncheckedIOException(new IOException(e));
 		}
+	}
+	
+	public static void main(String[] args) {
+		TransactionResult r = TransactionResult.COMMIT;
+		r.setTxnId("---");
+		System.out.println(makeResponse(r));
 	}
 }

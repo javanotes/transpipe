@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core.engine;
+package org.reactiveminds.txpipe.broker;
 
 import org.reactiveminds.txpipe.core.api.Publisher;
 import org.reactiveminds.txpipe.core.dto.Event;

@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core.engine;
+package org.reactiveminds.txpipe.broker;
 
 import org.reactiveminds.txpipe.core.dto.Event;
 import org.slf4j.Logger;

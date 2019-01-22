@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core.engine;
+package org.reactiveminds.txpipe.broker;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -12,7 +12,7 @@ import org.apache.kafka.clients.admin.ListTopicsOptions;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.utils.Utils;
-import org.reactiveminds.txpipe.core.engine.KafkaConfiguration.ConsumerOffsetWrapper;
+import org.reactiveminds.txpipe.broker.KafkaConfiguration.ConsumerOffsetWrapper;
 import org.reactiveminds.txpipe.err.BrokerException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

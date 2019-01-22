@@ -3,8 +3,6 @@ package org.reactiveminds.txpipe.core;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import org.json.JSONException;
-import org.json.JSONObject;
 import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
 import org.reactiveminds.txpipe.core.api.Publisher;
@@ -56,13 +54,7 @@ class DefaultServiceManager implements ServiceManager{
 		TransactionResult result = publisher.execute(requestJson, queue, pipelineId, maxAwait, unit);
 		if(result == TransactionResult.TIMEOUT)
 			throw new TimeoutException();
-		JSONObject o = new JSONObject();
-		try {
-			o.put(result.getTxnId(), result.name());
-		} catch (JSONException e) {
-			//e.printStackTrace();
-		}
-		return o.toString();
+		return JsonMapper.makeResponse(result);
 	}
 	@Override
 	public void registerPipeline(String pipeline, String... components) {

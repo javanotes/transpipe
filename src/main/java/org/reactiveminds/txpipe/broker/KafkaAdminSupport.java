@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core.engine;
+package org.reactiveminds.txpipe.broker;
 
 import java.util.Set;
 

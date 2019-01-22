@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core.engine;
+package org.reactiveminds.txpipe.broker;
 
 import java.io.UncheckedIOException;
 import java.util.concurrent.ExecutorService;
@@ -13,7 +13,7 @@ import org.reactiveminds.txpipe.api.TransactionService;
 import org.reactiveminds.txpipe.core.api.Subscriber;
 import org.reactiveminds.txpipe.core.dto.Event;
 import org.reactiveminds.txpipe.err.CommitFailedException;
-import org.reactiveminds.txpipe.err.StartupIntitializationException;
+import org.reactiveminds.txpipe.err.IntitializationException;
 import org.reactiveminds.txpipe.spi.DiscoveryAgent;
 import org.reactiveminds.txpipe.spi.EventRecord;
 import org.reactiveminds.txpipe.spi.EventRecorder;
@@ -141,7 +141,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 			discovery = StringUtils.hasText(discoveryService) ? (DiscoveryAgent) Class.forName(discoveryService).newInstance() : new SpringContextDiscoveryAgent();
 		} catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
 			PLOG.error("Discovery class not loaded", e);
-			throw new StartupIntitializationException("Discovery class not loaded", e);
+			throw new IntitializationException("Discovery class not loaded", e);
 		}
 		
 		container = factory.getBean(PartitionAwareMessageListenerContainer.class, listeningTopic, getListenerId(), concurreny, new ContainerErrHandler());

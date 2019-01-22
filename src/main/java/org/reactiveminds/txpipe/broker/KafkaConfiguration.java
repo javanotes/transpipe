@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core.engine;
+package org.reactiveminds.txpipe.broker;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -15,13 +15,14 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.reactiveminds.txpipe.core.engine.PartitionAwareMessageListenerContainer.PartitionListener;
+import org.reactiveminds.txpipe.broker.PartitionAwareMessageListenerContainer.PartitionListener;
 import org.reactiveminds.txpipe.err.BrokerException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Scope;
 import org.springframework.kafka.core.ConsumerFactory;
@@ -32,9 +33,8 @@ import org.springframework.kafka.listener.AbstractMessageListenerContainer.AckMo
 import org.springframework.kafka.listener.ErrorHandler;
 import org.springframework.kafka.listener.KafkaMessageListenerContainer;
 import org.springframework.kafka.listener.config.ContainerProperties;
-import org.springframework.stereotype.Component;
 
-@Component
+@Configuration
 @EnableConfigurationProperties(KafkaProperties.class)
 class KafkaConfiguration  {
 

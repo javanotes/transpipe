@@ -1,7 +1,7 @@
 package org.reactiveminds.txpipe.spi;
 
+import org.reactiveminds.txpipe.PlatformConfiguration;
 import org.reactiveminds.txpipe.api.TransactionService;
-import org.reactiveminds.txpipe.core.EngineConfiguration;
 
 public interface DiscoveryAgent {
 	/**
@@ -21,7 +21,7 @@ public interface DiscoveryAgent {
 
 		@Override
 		public TransactionService getServiceById(String id) {
-			return EngineConfiguration.getMangedBeanOfName(id, TransactionService.class);
+			return PlatformConfiguration.getMangedBeanOfName(id, TransactionService.class);
 		}
 		
 	}

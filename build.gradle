@@ -14,11 +14,30 @@ apply plugin: 'java'
 apply plugin: 'eclipse'
 apply plugin: 'org.springframework.boot'
 apply plugin: 'io.spring.dependency-management'
+apply plugin: 'maven-publish'
+
 
 sourceCompatibility = 1.8
 
 repositories {
 	mavenCentral()
+	mavenLocal()
+}
+
+jar {
+	enabled = true
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+        	groupId 'org.reactiveminds.txpipe'
+			artifactId 'transpipe'
+			version '0.0.1'
+			
+            from components.java
+        }
+    }
 }
 
 dependencies {

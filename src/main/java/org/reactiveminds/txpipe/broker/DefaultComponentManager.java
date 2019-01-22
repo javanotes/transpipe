@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core.engine;
+package org.reactiveminds.txpipe.broker;
 
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
@@ -26,7 +26,7 @@ import org.reactiveminds.txpipe.core.dto.PausePayload;
 import org.reactiveminds.txpipe.core.dto.ResumePayload;
 import org.reactiveminds.txpipe.core.dto.StopPayload;
 import org.reactiveminds.txpipe.err.ConfigurationException;
-import org.reactiveminds.txpipe.err.StartupIntitializationException;
+import org.reactiveminds.txpipe.err.IntitializationException;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,7 +86,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		try {
 			boolean b = startupLatch.await(readAbortWait, TimeUnit.SECONDS);
 			if(!b)
-				throw new StartupIntitializationException(
+				throw new IntitializationException(
 						"Abort listener did not complete in time. This can cause aborted transactions to fire unexpectedly. Restart node until this error goes away");
 			
 		} catch (InterruptedException e) {
