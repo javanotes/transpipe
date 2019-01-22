@@ -18,7 +18,7 @@ import org.reactiveminds.txpipe.spi.DiscoveryAgent;
 import org.reactiveminds.txpipe.spi.EventRecord;
 import org.reactiveminds.txpipe.spi.EventRecorder;
 import org.reactiveminds.txpipe.spi.TransactionMarker;
-import org.reactiveminds.txpipe.spi.DiscoveryAgent.SpringContextDiscoveryAgent;
+import org.reactiveminds.txpipe.spi.impl.SpringContextDiscoveryAgent;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
