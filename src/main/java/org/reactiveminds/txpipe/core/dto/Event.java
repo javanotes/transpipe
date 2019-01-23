@@ -3,10 +3,10 @@ package org.reactiveminds.txpipe.core.dto;
 public class Event {
 	public Event() {
 	}
-	public String getPayload() {
+	public byte[] getPayload() {
 		return payload;
 	}
-	public void setPayload(String payload) {
+	public void setPayload(byte[] payload) {
 		this.payload = payload;
 	}
 	public String getTxnId() {
@@ -31,7 +31,7 @@ public class Event {
 	public void setDestination(String destination) {
 		this.destination = destination;
 	}
-	private String payload;
+	private byte[] payload;
 	private String txnId;
 	private int eventId;
 	private long timestamp;
@@ -45,7 +45,7 @@ public class Event {
 	 * @param timestamp
 	 * @param destination
 	 */
-	private Event(String payload, String txnId, int eventId, long timestamp, String destination, String pipeline) {
+	private Event(byte[] payload, String txnId, int eventId, long timestamp, String destination, String pipeline) {
 		super();
 		this.payload = payload;
 		this.txnId = txnId;

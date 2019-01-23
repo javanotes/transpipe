@@ -25,8 +25,8 @@ import org.reactiveminds.txpipe.core.dto.CreatePayload;
 import org.reactiveminds.txpipe.core.dto.PausePayload;
 import org.reactiveminds.txpipe.core.dto.ResumePayload;
 import org.reactiveminds.txpipe.core.dto.StopPayload;
-import org.reactiveminds.txpipe.err.ConfigurationException;
-import org.reactiveminds.txpipe.err.IntitializationException;
+import org.reactiveminds.txpipe.err.TxPipeConfigurationException;
+import org.reactiveminds.txpipe.err.TxPipeIntitializationException;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,7 +86,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		try {
 			boolean b = startupLatch.await(readAbortWait, TimeUnit.SECONDS);
 			if(!b)
-				throw new IntitializationException(
+				throw new TxPipeIntitializationException(
 						"Abort listener did not complete in time. This can cause aborted transactions to fire unexpectedly. Restart node until this error goes away");
 			
 		} catch (InterruptedException e) {
@@ -108,7 +108,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		
 		commandListener.getPartitionListener().awaitOnReady(30, TimeUnit.SECONDS);
 		if(commandListener.getPartitionListener().getSnapshot().isEmpty())
-			throw new ConfigurationException("No orchestration partitions assigned! Is 'txpipe.core.instanceId' configured to be unique across cluster? You may consider try after sometime to allow some time to balance");
+			throw new TxPipeConfigurationException("No orchestration partitions assigned! Is 'txpipe.core.instanceId' configured to be unique across cluster? You may consider try after sometime to allow some time to balance");
 	}
 	private void loadMetadata() {
 		if (loadDefOnStart) {
@@ -130,11 +130,11 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		admin.createTopic(orchestrationTopic, 1, (short) 1);
 		int c = admin.getPartitionCount(orchestrationTopic);
 		if(c != 1)
-			throw new ConfigurationException(orchestrationTopic +" should be a single partition topic. You may consider try after sometime to allow some time to balance");
+			throw new TxPipeConfigurationException(orchestrationTopic +" should be a single partition topic. You may consider try after sometime to allow some time to balance");
 	}
 	private void verifyInstanceUnique() {
 		if(!admin.isGroupIdUnique(groupId, orchestrationTopic))
-			throw new ConfigurationException("'txpipe.core.instanceId' should configured to be unique across cluster. You may consider try after sometime to allow some time to balance");
+			throw new TxPipeConfigurationException("'txpipe.core.instanceId' should configured to be unique across cluster. You may consider try after sometime to allow some time to balance");
 	}
 	
 	@PostConstruct

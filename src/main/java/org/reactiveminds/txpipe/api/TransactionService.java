@@ -1,7 +1,6 @@
 package org.reactiveminds.txpipe.api;
 
 import org.reactiveminds.txpipe.core.dto.ComponentDef;
-import org.reactiveminds.txpipe.err.CommitFailedException;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
 

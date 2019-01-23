@@ -10,6 +10,7 @@ import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.core.api.Publisher;
 import org.reactiveminds.txpipe.core.dto.Event;
 import org.reactiveminds.txpipe.err.BrokerException;
+import org.reactiveminds.txpipe.spi.PayloadCodec;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.reactiveminds.txpipe.utils.UUIDs;
 import org.slf4j.Logger;
@@ -20,10 +21,10 @@ import org.springframework.util.Assert;
 
 public class KafkaPublisher implements Publisher {
 
-	private static Event makeEvent(String message, String queue) {
+	private Event makeEvent(String message, String queue) {
 		Event e = new Event();
 		e.setDestination(queue);
-		e.setPayload(message);
+		e.setPayload(codec.encode(message));
 		e.setTxnId(UUIDs.timeBased().toString());
 		e.setTimestamp(UUIDs.unixTimestamp(UUID.fromString(e.getTxnId())));
 		return e;
@@ -33,6 +34,8 @@ public class KafkaPublisher implements Publisher {
 	
 	@Autowired
 	RequestReplyKafkaTemplate replyKafka;
+	@Autowired
+	PayloadCodec codec;
 	
 	@Override
 	public String publish(String message, String queue, String pipeline) {

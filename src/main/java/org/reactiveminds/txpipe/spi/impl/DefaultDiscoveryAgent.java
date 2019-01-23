@@ -1,8 +1,9 @@
 package org.reactiveminds.txpipe.spi.impl;
 
-import org.reactiveminds.txpipe.PlatformConfiguration;
 import org.reactiveminds.txpipe.api.TransactionService;
 import org.reactiveminds.txpipe.spi.DiscoveryAgent;
+import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * The default {@linkplain DiscoveryAgent}. Expects the service to be present in Spring context. Non Spring applications
@@ -10,11 +11,13 @@ import org.reactiveminds.txpipe.spi.DiscoveryAgent;
  * @author Sutanu_Dalui
  *
  */
-public class SpringContextDiscoveryAgent implements DiscoveryAgent{
+public class DefaultDiscoveryAgent implements DiscoveryAgent{
 
+	@Autowired
+	private BeanFactory beanFactory;
 	@Override
 	public TransactionService getServiceById(String id) {
-		return PlatformConfiguration.getMangedBeanOfName(id, TransactionService.class);
+		return beanFactory.getBean(id, TransactionService.class);
 	}
 	
 }

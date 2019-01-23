@@ -1,8 +1,6 @@
 package org.reactiveminds.txpipe.err;
 
-import org.springframework.core.NestedRuntimeException;
-
-public class BrokerException extends NestedRuntimeException {
+public class BrokerException extends TxPipeRuntimeException {
 
 	public BrokerException(String msg, Throwable cause) {
 		super(msg, cause);

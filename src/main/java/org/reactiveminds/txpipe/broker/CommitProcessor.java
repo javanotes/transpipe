@@ -32,7 +32,7 @@ class CommitProcessor extends RollbackProcessor {
 	}
 	private void propagate(Event event, String response) {
 		Event next = event.copy();
-		next.setPayload(response);
+		next.setPayload(codec.encode(response));
 		next.setDestination(commitLink);
 		publisher.publish(next);
 		log.debug("Passed commit to " + commitLink);

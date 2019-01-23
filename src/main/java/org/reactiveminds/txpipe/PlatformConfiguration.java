@@ -2,11 +2,17 @@ package org.reactiveminds.txpipe;
 
 import org.reactiveminds.txpipe.broker.ComponentManagerConfiguration;
 import org.reactiveminds.txpipe.core.ServiceManagerConfiguration;
+import org.reactiveminds.txpipe.spi.DiscoveryAgent;
 import org.reactiveminds.txpipe.spi.EventRecorder;
+import org.reactiveminds.txpipe.spi.PayloadCodec;
 import org.reactiveminds.txpipe.spi.TransactionMarker;
+import org.reactiveminds.txpipe.spi.impl.DefaultDiscoveryAgent;
+import org.reactiveminds.txpipe.spi.impl.JavaScriptDiscoveryAgent;
 import org.reactiveminds.txpipe.spi.impl.LogbackEventRecorder;
+import org.reactiveminds.txpipe.spi.impl.SnappyPayloadCodec;
 import org.reactiveminds.txpipe.spi.impl.TransactionExpirationMarker;
 import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
@@ -33,6 +39,20 @@ public class PlatformConfiguration implements ApplicationContextAware{
 	EventRecorder eventRecorder() {
 		return new LogbackEventRecorder();
 	}
+	@ConditionalOnMissingBean
+	@Bean
+	PayloadCodec payloadCodec() {
+		return new SnappyPayloadCodec();
+	}
+	@Value("${txpipe.core.discoveryAgent.js:false}")
+	private boolean enableJsAgent;
+	
+	@ConditionalOnMissingBean
+	@Bean
+	DiscoveryAgent discovery() {
+		return enableJsAgent ? new JavaScriptDiscoveryAgent() : new DefaultDiscoveryAgent();
+	}
+	
 	private static ApplicationContext springContext;
 	@Override
 	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {

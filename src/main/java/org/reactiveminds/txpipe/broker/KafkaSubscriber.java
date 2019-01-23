@@ -8,17 +8,17 @@ import java.util.function.Predicate;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.record.TimestampType;
+import org.reactiveminds.txpipe.api.CommitFailedException;
 import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.api.TransactionService;
 import org.reactiveminds.txpipe.core.api.Subscriber;
 import org.reactiveminds.txpipe.core.dto.Event;
-import org.reactiveminds.txpipe.err.CommitFailedException;
-import org.reactiveminds.txpipe.err.IntitializationException;
+import org.reactiveminds.txpipe.err.TxPipeIntitializationException;
 import org.reactiveminds.txpipe.spi.DiscoveryAgent;
 import org.reactiveminds.txpipe.spi.EventRecord;
 import org.reactiveminds.txpipe.spi.EventRecorder;
+import org.reactiveminds.txpipe.spi.PayloadCodec;
 import org.reactiveminds.txpipe.spi.TransactionMarker;
-import org.reactiveminds.txpipe.spi.impl.SpringContextDiscoveryAgent;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -112,6 +112,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	private long recordExpirySecs;
 	@Value("${txpipe.core.discoveryAgent:}")
 	private String discoveryService;
+	
 	private PartitionAwareMessageListenerContainer container;
 	@Autowired
 	BeanFactory factory;
@@ -126,7 +127,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	}
 	@Autowired
 	KafkaTemplate<String, String> pub;
-	private DiscoveryAgent discovery;
+	private DiscoveryAgent serviceLocator;
 	
 	private ExecutorService eventThread;
 	private volatile boolean started = false;
@@ -138,10 +139,10 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		addFilter(k -> pipeline.equals(KafkaPublisher.extractPipeline(k.key())));
 		addFilter(k -> System.currentTimeMillis() - k.timestamp() < TimeUnit.SECONDS.toMillis(recordExpirySecs));
 		try {
-			discovery = StringUtils.hasText(discoveryService) ? (DiscoveryAgent) Class.forName(discoveryService).newInstance() : new SpringContextDiscoveryAgent();
+			serviceLocator = StringUtils.hasText(discoveryService) ? (DiscoveryAgent) Class.forName(discoveryService).newInstance() : factory.getBean(DiscoveryAgent.class);
 		} catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
 			PLOG.error("Discovery class not loaded", e);
-			throw new IntitializationException("Discovery class not loaded", e);
+			throw new TxPipeIntitializationException("Discovery class not loaded", e);
 		}
 		
 		container = factory.getBean(PartitionAwareMessageListenerContainer.class, listeningTopic, getListenerId(), concurreny, new ContainerErrHandler());
@@ -202,15 +203,17 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	 */
 	final String process(Event event) {
 		//the bean should be there, as the starting the components will depend on it
-		TransactionService service = discovery.getServiceById(componentId);
+		TransactionService service = serviceLocator.getServiceById(componentId);
 		if(isCommitMode) {
-			return service.commit(event.getTxnId(), event.getPayload());
+			return service.commit(event.getTxnId(), codec.decode(event.getPayload()));
 		}
 		else {
 			service.rollback(event.getTxnId());
 		}
 		return null;
 	}
+	@Autowired
+	PayloadCodec codec;
 	/**
 	 * Abort on request timeout
 	 * @param event
@@ -272,7 +275,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 			recordEvent(data, ex);
 		}
 	}
-	private void recordEvent(ConsumerRecord<String, String> data, Exception e) {
+	private void recordEvent(ConsumerRecord<?, ?> data, Exception e) {
 		if (recordEventAsync) {
 			eventThread.submit(new EventRecorderRunner(data, e));
 		}
