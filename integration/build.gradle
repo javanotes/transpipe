@@ -1,0 +1,22 @@
+
+
+apply plugin: 'java'
+apply plugin: 'eclipse'
+
+
+sourceCompatibility = 1.8
+
+repositories {
+	mavenCentral()
+	mavenLocal()
+}
+
+jar {
+	enabled = true
+}
+
+dependencies {
+    implementation('org.reactiveminds.txpipe:transpipe:0.0.1')
+    //testImplementation('org.springframework.boot:spring-boot-starter-test')
+}
+
