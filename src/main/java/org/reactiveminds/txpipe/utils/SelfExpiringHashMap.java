@@ -2,6 +2,7 @@ package org.reactiveminds.txpipe.utils;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Observable;
 import java.util.Set;
@@ -25,7 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpiringMap<K, V>,Runnable {
 
-    private final Map<K, V> internalMap;
+    private final Map<ExpiringKey<K>, V> internalMap;
     private static ExecutorService notifThread;
     private final Map<K, ExpiringKey<K>> expiringKeys;
 
@@ -54,7 +55,7 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
      * @param supplier
      * @param defaultMaxLifeTimeMillis
      */
-    public SelfExpiringHashMap(InternalMapSupplier<K, V> supplier, long defaultMaxLifeTimeMillis) {
+    public SelfExpiringHashMap(InternalMapSupplier<ExpiringKey<K>, V> supplier, long defaultMaxLifeTimeMillis) {
         internalMap = supplier.supply();
         expiringKeys = Collections.synchronizedMap(new WeakHashMap<K, ExpiringKey<K>>());
         this.maxLifeTimeMillis = defaultMaxLifeTimeMillis;
@@ -67,13 +68,13 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
     }
 
     public SelfExpiringHashMap(long defaultMaxLifeTimeMillis, int initialCapacity) {
-        internalMap = new ConcurrentHashMap<K, V>(initialCapacity);
+        internalMap = new ConcurrentHashMap<>(initialCapacity);
         expiringKeys = Collections.synchronizedMap(new WeakHashMap<K, ExpiringKey<K>>(initialCapacity));
         this.maxLifeTimeMillis = defaultMaxLifeTimeMillis;
     }
 
     public SelfExpiringHashMap(long defaultMaxLifeTimeMillis, int initialCapacity, float loadFactor) {
-        internalMap = new ConcurrentHashMap<K, V>(initialCapacity, loadFactor);
+        internalMap = new ConcurrentHashMap<>(initialCapacity, loadFactor);
         expiringKeys = Collections.synchronizedMap(new WeakHashMap<K, ExpiringKey<K>>(initialCapacity, loadFactor));
         this.maxLifeTimeMillis = defaultMaxLifeTimeMillis;
     }
@@ -99,7 +100,7 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
      */
     @Override
     public boolean containsKey(Object key) {
-        return internalMap.containsKey(key);
+        return internalMap.containsKey(new ExpiringKey<>(key));
     }
 
     /**
@@ -113,7 +114,7 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
     @Override
     public V get(Object key) {
         renewKey(key);
-        return internalMap.get(key);
+        return internalMap.get(new ExpiringKey<>(key));
     }
 
     /**
@@ -138,7 +139,7 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
             expiringKeys.put((K) key, delayedKey);
         }
         delayQueue.offer(delayedKey);
-        return internalMap.put(key, value);
+        return internalMap.put(delayedKey, value);
     }
 
     /**
@@ -146,7 +147,7 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
      */
     @Override
     public V remove(Object key) {
-        V removedValue = internalMap.remove(key);
+        V removedValue = internalMap.remove(new ExpiringKey<>(key));
         expireKey(expiringKeys.remove(key));
         return removedValue;
     }
@@ -223,22 +224,53 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
             notifyObservers(key);
 		}
     }
+   
     private void cleanup() throws InterruptedException {
         ExpiringKey<K> delayedKey = delayQueue.take();
         while (delayedKey != null) {
-            internalMap.remove(delayedKey.getKey());
+        	internalMap.remove(delayedKey);
             expiringKeys.remove(delayedKey.getKey());
             notifThread.execute(new NotifRunner(delayedKey.getKey()));
             delayedKey = delayQueue.take();
         }
     }
+    /**
+     * Remove all expired entries.
+     */
+    protected synchronized void removeAllExpired() {
+    	for(Iterator<Entry<ExpiringKey<K>, V>> iter = internalMap.entrySet().iterator();iter.hasNext();) {
+    		Entry<ExpiringKey<K>, V> entry = iter.next();
+    		ExpiringKey<K> key = entry.getKey();
+    		if(key.isDelayed()) {
+    			iter.remove();
+    			expiringKeys.remove(key.getKey());
+    		}
+    	}
+    }
 
-    private static class ExpiringKey<K> implements Delayed {
+    public static final class ExpiringKey<K> implements Delayed {
 
-        private long startTime = System.currentTimeMillis();
+        public long getStartTime() {
+			return startTime;
+		}
+
+		public void setStartTime(long startTime) {
+			this.startTime = startTime;
+		}
+
+		public long getMaxLifeTimeMillis() {
+			return maxLifeTimeMillis;
+		}
+
+
+		private long startTime = System.currentTimeMillis();
         private final long maxLifeTimeMillis;
         private final K key;
-
+        
+        private ExpiringKey(K key) {
+			this(key, 0);
+		}
+        
         public ExpiringKey(K key, long maxLifeTimeMillis) {
             this.maxLifeTimeMillis = maxLifeTimeMillis;
             this.key = key;
@@ -284,6 +316,9 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
             return unit.convert(getDelayMillis(), TimeUnit.MILLISECONDS);
         }
 
+        private boolean isDelayed() {
+        	return getDelayMillis() <= 0;
+        }
         private long getDelayMillis() {
             return (startTime + maxLifeTimeMillis) - System.currentTimeMillis();
         }
