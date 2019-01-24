@@ -9,13 +9,24 @@ import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.DelayQueue;
 import java.util.concurrent.Delayed;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 // Adapted from https://gist.github.com/pcan/16faf4e59942678377e0
+/**
+ * The default implementation of a {@link SelfExpiringMap} that uses a {@link DelayQueue} to determine
+ * expiration of next records.<p> Note : The notification execution happens in a cached pooled thread. So it should not
+ * be used for long running/blocking tasks.
+ * @author Sutanu_Dalui
+ *
+ * @param <K>
+ * @param <V>
+ */
 public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpiringMap<K, V>,Runnable {
 
     private final Map<K, V> internalMap;
-
+    private static ExecutorService notifThread;
     private final Map<K, ExpiringKey<K>> expiringKeys;
 
     /**
@@ -28,12 +39,29 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
      */
     private final long maxLifeTimeMillis;
 
+    static{
+    	notifThread = Executors.newCachedThreadPool((r) -> {
+    		Thread t = new Thread(r, "SelfExpiringMapNotifier");
+    		t.setDaemon(true);
+    		return t;
+    	});
+    }
     public SelfExpiringHashMap() {
     	this(Long.MAX_VALUE);
     }
-
+    /**
+     * 
+     * @param supplier
+     * @param defaultMaxLifeTimeMillis
+     */
+    public SelfExpiringHashMap(InternalMapSupplier<K, V> supplier, long defaultMaxLifeTimeMillis) {
+        internalMap = supplier.supply();
+        expiringKeys = Collections.synchronizedMap(new WeakHashMap<K, ExpiringKey<K>>());
+        this.maxLifeTimeMillis = defaultMaxLifeTimeMillis;
+    }
+    
     public SelfExpiringHashMap(long defaultMaxLifeTimeMillis) {
-        internalMap = new ConcurrentHashMap<K, V>();
+        internalMap = new ConcurrentHashMap<>();
         expiringKeys = Collections.synchronizedMap(new WeakHashMap<K, ExpiringKey<K>>());
         this.maxLifeTimeMillis = defaultMaxLifeTimeMillis;
     }
@@ -183,14 +211,24 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
     public Set<Entry<K, V>> entrySet() {
         throw new UnsupportedOperationException();
     }
-
+    private class NotifRunner implements Runnable{
+    	private NotifRunner(K key) {
+			super();
+			this.key = key;
+		}
+		K key;
+		@Override
+		public void run() {
+			setChanged();
+            notifyObservers(key);
+		}
+    }
     private void cleanup() throws InterruptedException {
         ExpiringKey<K> delayedKey = delayQueue.take();
         while (delayedKey != null) {
             internalMap.remove(delayedKey.getKey());
             expiringKeys.remove(delayedKey.getKey());
-            setChanged();
-            notifyObservers(delayedKey.getKey());
+            notifThread.execute(new NotifRunner(delayedKey.getKey()));
             delayedKey = delayQueue.take();
         }
     }

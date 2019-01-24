@@ -11,8 +11,15 @@ public class ServiceManagerConfiguration {
 	RestServer server() {
 		return new RestServer();
 	}
+	
 	@Bean
-	public ServiceManager componentManager() {
+	ServiceManager componentManager() {
 		return new DefaultServiceManager();
 	}
+	
+	@Bean
+	LocalMapStoreFactory mapstoreFactory() {
+		return new LocalMapStoreFactory();
+	}
+	
 }

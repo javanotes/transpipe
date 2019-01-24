@@ -48,6 +48,10 @@ dependencies {
     implementation group: 'org.apache.kafka', name: 'kafka-clients', version: '2.1.0'
     implementation('com.sparkjava:spark-core:2.7.2')
     implementation group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.9.7'
+    // https://mvnrepository.com/artifact/com.github.kstyrc/embedded-redis
+	//implementation group: 'com.github.kstyrc', name: 'embedded-redis', version: '0.6'
+    implementation('org.mapdb:mapdb:3.0.7')
+    
     testImplementation('org.springframework.boot:spring-boot-starter-test')
 }
 

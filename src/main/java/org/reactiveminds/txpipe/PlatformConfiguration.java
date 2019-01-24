@@ -64,23 +64,23 @@ public class PlatformConfiguration implements ApplicationContextAware{
 	 * @param requiredType
 	 * @return
 	 */
-	public static <T> T getMangedBeanOfName(String name, Class<T> requiredType) {
+	public static <T> T getBeanOfNameAndType(String name, Class<T> requiredType) {
 		if(springContext == null)
 			throw new IllegalStateException("Context not initialized!");
 		
 		return springContext.getBean(name, requiredType);
 	}
-	public static Object getMangedBeanOfName(String name) {
+	public static Object getBeanOfName(String name, Object...args) {
 		if(springContext == null)
 			throw new IllegalStateException("Context not initialized!");
 		
-		return springContext.getBean(name);
+		return springContext.getBean(name, args);
 	}
-	public static <T> T getMangedBeanOfType(Class<T> requiredType) {
+	public static <T> T getBeanOfType(Class<T> requiredType, Object...args) {
 		if(springContext == null)
 			throw new IllegalStateException("Context not initialized!");
 		
-		return springContext.getBean(requiredType);
+		return springContext.getBean(requiredType, args);
 	}
 	public static String getApplicationProperty(String prop) {
 		if(springContext == null)

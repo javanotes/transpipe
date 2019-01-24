@@ -1,5 +1,7 @@
 package com.transaction.b2b;
 
+import java.util.concurrent.TimeUnit;
+
 import org.reactiveminds.txpipe.PlatformConfiguration;
 import org.reactiveminds.txpipe.api.AbstractTransactionService;
 import org.reactiveminds.txpipe.api.CommitFailedException;
@@ -28,11 +30,16 @@ public class AppConfiguration {
 			
 			@Override
 			public void rollback(String txnId) {
+				if(presentInStore(txnId)) {
+					log.info("Deleting .. "+getFromStore(txnId));
+					deleteFromStore(txnId);
+				}
 				log.warn(txnId+" -- credit checking rolled back --");
 			}
 			
 			@Override
 			public String commit(String txnId, String payload) throws CommitFailedException {
+				saveToStore(txnId, "COMMIT", 60, TimeUnit.SECONDS);
 				log.info(txnId+" -- credit checking success --");
 				return "";
 			}
