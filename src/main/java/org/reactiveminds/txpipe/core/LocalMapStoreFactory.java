@@ -1,19 +1,22 @@
 package org.reactiveminds.txpipe.core;
 
 import java.io.FileNotFoundException;
-import java.io.IOException;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Set;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
-import org.mapdb.DataInput2;
-import org.mapdb.DataOutput2;
+import org.mapdb.HTreeMap;
 import org.mapdb.Serializer;
+import org.mapdb.Store;
 import org.reactiveminds.txpipe.core.api.LocalMapStore;
 import org.reactiveminds.txpipe.utils.SelfExpiringHashMap;
 import org.reactiveminds.txpipe.utils.SelfExpiringHashMap.ExpiringKey;
+import org.reactiveminds.txpipe.utils.SelfExpiringMap.InternalMapSupplier;
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.ResourceUtils;
@@ -30,60 +33,104 @@ public class LocalMapStoreFactory implements FactoryBean<LocalMapStore> {
 	private DB db;
 	@PostConstruct
 	private void open() throws FileNotFoundException {
-		db = DBMaker.fileDB(ResourceUtils.getFile(fileDbPath)).transactionEnable().fileMmapEnable().make();
+		db = DBMaker.fileDB(ResourceUtils.getFile(fileDbPath))
+				.transactionEnable()
+				.fileMmapEnable()
+				.make();
 	}
 	@PreDestroy
 	private void destroy() {
 		db.close();
 	}
-	/**
-	 * Implementation of {@linkplain LocalMapStore} that uses MapDB as backing persistence layer.
-	 * @author Sutanu_Dalui
-	 *
-	 */
-	private static class MapDBStore extends SelfExpiringHashMap<String, String> implements LocalMapStore {
-
-	    public MapDBStore(InternalMapSupplier<ExpiringKey<String>, String> supp, long defaultMaxLifeTimeMillis) {
-	        super(supp, defaultMaxLifeTimeMillis);
-	        removeAllExpired();
-	    }
-	    
-	}
-	/**
-	 * Serializer for {@linkplain ExpiringKey}
-	 * @author Sutanu_Dalui
-	 *
-	 */
-	private static class ExpiryKeySerializer implements Serializer<ExpiringKey<String>>{
-
-		@Override
-		public void serialize(DataOutput2 out, ExpiringKey<String> value) throws IOException {
-			out.writeUTF(value.getKey());
-			out.writeLong(value.getMaxLifeTimeMillis());
-			out.writeLong(value.getStartTime());
-		}
-
-		@Override
-		public ExpiringKey<String> deserialize(DataInput2 input, int available) throws IOException {
-			ExpiringKey<String> key = new ExpiringKey<String>(input.readUTF(), input.readLong());
-			key.setStartTime(input.readLong());
-			return key;
-		}
-		
-	}
-	
 	@Override
 	public LocalMapStore getObject() throws Exception {
 		return getObject("default");
 	}
+	class MapDBSupplierProxy implements InternalMapSupplier<ExpiringKey<String>, String>, Map<ExpiringKey<String>, String>,AutoCloseable{
+		private final HTreeMap<ExpiringKey<String>, String> mapFile;
+		/**
+		 * Load into memory.
+		 */
+		void load() {
+			for(Store s : mapFile.getStores()) {
+				s.fileLoad();
+			}
+		}
+		public MapDBSupplierProxy(String name) {
+			mapFile = db.hashMap(name, new ExpiryKeySerializer(), Serializer.STRING_ASCII).createOrOpen();
+		}
+		@Override
+		public Map<ExpiringKey<String>, String> supply() {
+			return this;
+		}
+		@Override
+		public int size() {
+			return mapFile.size();
+		}
+		@Override
+		public boolean isEmpty() {
+			return mapFile.isEmpty();
+		}
+		@Override
+		public boolean containsKey(Object key) {
+			return mapFile.containsKey(key);
+		}
+		@Override
+		public boolean containsValue(Object value) {
+			return mapFile.containsValue(value);
+		}
+		@Override
+		public String get(Object key) {
+			return mapFile.get(key);
+		}
+		@Override
+		public String put(ExpiringKey<String> key, String value) {
+			String ret = mapFile.put(key, value);
+			db.commit();
+			return ret;
+		}
+		@Override
+		public String remove(Object key) {
+			String ret =  mapFile.remove(key);
+			db.commit();
+			return ret;
+		}
+		@Override
+		public void putAll(Map<? extends ExpiringKey<String>, ? extends String> m) {
+			mapFile.putAll(m);
+			db.commit();
+		}
+		@Override
+		public void clear() {
+			mapFile.clear();
+			db.commit();
+		}
+		@Override
+		public Set<ExpiringKey<String>> keySet() {
+			return mapFile.keySet();
+		}
+		@Override
+		public Collection<String> values() {
+			return mapFile.values();
+		}
+		@Override
+		public Set<Entry<ExpiringKey<String>, String>> entrySet() {
+			return mapFile.entrySet();
+		}
+		@Override
+		public void close() throws Exception {
+			mapFile.close();
+		}
+		
+	}
 	/**
-	 * No singleton map store.
+	 * Prototype map store.
 	 * @param mapName
 	 * @return
 	 * @throws Exception
 	 */
 	public LocalMapStore getObject(String mapName) throws Exception {
-		return new MapDBStore(() -> db.hashMap(mapName, new ExpiryKeySerializer(), Serializer.STRING_ASCII).createOrOpen(), Long.MAX_VALUE);
+		return new MapDBStore(new MapDBSupplierProxy(mapName), Long.MAX_VALUE, mapName);
 	}
 
 	@Override

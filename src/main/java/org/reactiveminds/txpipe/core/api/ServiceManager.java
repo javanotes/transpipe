@@ -55,4 +55,10 @@ public interface ServiceManager {
 	 * @param txnId
 	 */
 	void abort(String txnId);
+	/**
+	 * Get an instance of a {@linkplain LocalMapStore} by name.
+	 * @param name
+	 * @return
+	 */
+	LocalMapStore getMapStore(String name);
 }

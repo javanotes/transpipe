@@ -5,15 +5,18 @@ import java.util.concurrent.TimeoutException;
 
 import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.LocalMapStore;
 import org.reactiveminds.txpipe.core.api.Publisher;
 import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.dto.Command;
+import org.reactiveminds.txpipe.core.dto.Command.Code;
 import org.reactiveminds.txpipe.core.dto.CreatePayload;
 import org.reactiveminds.txpipe.core.dto.PausePayload;
 import org.reactiveminds.txpipe.core.dto.ResumePayload;
 import org.reactiveminds.txpipe.core.dto.StopPayload;
-import org.reactiveminds.txpipe.core.dto.Command.Code;
 import org.reactiveminds.txpipe.utils.JsonMapper;
+import org.springframework.beans.factory.BeanCreationException;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -29,6 +32,8 @@ class DefaultServiceManager implements ServiceManager{
 	private String orchestrationTopic;
 	@Autowired
 	private KafkaTemplate<String, String> kafkaTemplate;
+	@Autowired
+	private LocalMapStoreFactory mapstoreFactory;
 	
 	private String getDestination(String pipelineId) {
 		if(!registry.contains(pipelineId))
@@ -91,5 +96,18 @@ class DefaultServiceManager implements ServiceManager{
 		Command c = new Command(Code.ABORT);
 		c.setPayload(txnId);
 		kafkaTemplate.send(orchestrationTopic+ABORT_TOPIC_SUFFIX, JsonMapper.serialize(c));
+	}
+	@Override
+	public LocalMapStore getMapStore(String name) {
+		try {
+			LocalMapStore mapstore = mapstoreFactory.getObject(name);
+			if (mapstore instanceof InitializingBean) {
+				((InitializingBean) mapstore).afterPropertiesSet();
+			}
+			mapstore.start();
+			return mapstore;
+		} catch (Exception e) {
+			throw new BeanCreationException("Unable to initialize map store - "+name, e);
+		}
 	}
 }

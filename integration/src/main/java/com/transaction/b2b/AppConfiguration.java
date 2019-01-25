@@ -1,7 +1,5 @@
 package com.transaction.b2b;
 
-import java.util.concurrent.TimeUnit;
-
 import org.reactiveminds.txpipe.PlatformConfiguration;
 import org.reactiveminds.txpipe.api.AbstractTransactionService;
 import org.reactiveminds.txpipe.api.CommitFailedException;
@@ -21,29 +19,10 @@ import org.springframework.context.annotation.Import;
 @Import(PlatformConfiguration.class)
 @Configuration
 public class AppConfiguration {
-
-
-	private static final Logger log = LoggerFactory.getLogger("Service_Log");
+	static final Logger log = LoggerFactory.getLogger("Service_Log");
 	@Bean
 	TransactionService checkCredit() {
-		return new AbstractTransactionService() {
-			
-			@Override
-			public void rollback(String txnId) {
-				if(presentInStore(txnId)) {
-					log.info("Deleting .. "+getFromStore(txnId));
-					deleteFromStore(txnId);
-				}
-				log.warn(txnId+" -- credit checking rolled back --");
-			}
-			
-			@Override
-			public String commit(String txnId, String payload) throws CommitFailedException {
-				saveToStore(txnId, "COMMIT", 60, TimeUnit.SECONDS);
-				log.info(txnId+" -- credit checking success --");
-				return "";
-			}
-		};
+		return new CreditCheckingService();
 	}
 	
 	@Bean

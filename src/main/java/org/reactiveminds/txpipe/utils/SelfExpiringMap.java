@@ -12,7 +12,7 @@ import java.util.Observer;
  * @param <V>
  */
 public interface SelfExpiringMap<K, V> extends Map<K, V> {
-
+	
 	/**
 	 * A supplier for custom map implementations. This can be used for instance,
 	 * in having write through persistent backing maps.

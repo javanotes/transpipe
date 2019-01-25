@@ -134,7 +134,7 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
         ExpiringKey<K> oldKey = expiringKeys.put((K) key, delayedKey);
         if(oldKey != null) {
         	//we should not get at this point
-        	//since all our keys (txn id) should be unique
+        	//if all our keys are be unique
             expireKey(oldKey);
             expiringKeys.put((K) key, delayedKey);
         }
@@ -235,7 +235,8 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
         }
     }
     /**
-     * Remove all expired entries.
+     * Remove all expired entries. This method should ideally be only invoked on a 
+     * startup, as there can be concurrency issues otherwise.
      */
     protected synchronized void removeAllExpired() {
     	for(Iterator<Entry<ExpiringKey<K>, V>> iter = internalMap.entrySet().iterator();iter.hasNext();) {
@@ -250,7 +251,13 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
 
     public static final class ExpiringKey<K> implements Delayed {
 
-        public long getStartTime() {
+        @Override
+		public String toString() {
+			return "ExpiringKey [startTime=" + startTime + ", maxLifeTimeMillis=" + maxLifeTimeMillis + ", key=" + key
+					+ "]";
+		}
+
+		public long getStartTime() {
 			return startTime;
 		}
 

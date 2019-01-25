@@ -1,33 +1,24 @@
 package org.reactiveminds.txpipe.api;
 
-import java.util.concurrent.TimeUnit;
-
-import org.reactiveminds.txpipe.core.LocalMapStoreFactory;
+import org.reactiveminds.txpipe.PlatformConfiguration;
 import org.reactiveminds.txpipe.core.api.LocalMapStore;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.reactiveminds.txpipe.core.api.ServiceManager;
+import org.springframework.beans.factory.BeanNameAware;
 
 /**
- * An abstract implementation of {@linkplain TransactionService} with no operation implementation
- * of the lifecycle methods and {@link #abort(String)} simply invoking {@link #rollback(String)}.
+ * An abstract implementation of {@linkplain TransactionService} with an optional {@linkplain LocalMapStore} instance injected
+ * , a no operation {@link #destroy()} and {@link #abort(String)} simply invoking {@link #rollback(String)}. <p>It is advisable to extend
+ * this class than directly implementing the {@linkplain TransactionService} interface.
+ * Remember to cleanup by invoking {@linkplain LocalMapStore#destroy()}, if this is {@linkplain LocalMapStoreAware}.
  * @author Sutanu_Dalui
  *
+ * @see LocalMapStoreAware
  */
-public abstract class AbstractTransactionService implements TransactionService {
+public abstract class AbstractTransactionService implements TransactionService,BeanNameAware {
 
-	@Autowired
-	private LocalMapStoreFactory factory;
-	
-	private LocalMapStore mapstore;
-	private void initMapStore() throws Exception {
-		mapstore = factory.getObject(getClass().getSimpleName());
-		Thread t = new Thread((Runnable)mapstore, "MapStoreWorker."+getClass().getSimpleName());
-		t.setDaemon(true);
-		t.start();
-	}
 	@Override
 	public void destroy() throws Exception {
-		// noop
-		
+		//
 	}
 	@Override
 	public void abort(String txnId) {
@@ -35,39 +26,15 @@ public abstract class AbstractTransactionService implements TransactionService {
 	}
 	@Override
 	public void afterPropertiesSet() throws Exception {
-		initMapStore();
+		if(this instanceof LocalMapStoreAware) {
+			ServiceManager factory = PlatformConfiguration.getBeanOfType(ServiceManager.class);
+			((LocalMapStoreAware)this).setMapStore(factory.getMapStore(beanName));
+		}
 	}
-	/**
-	 * Save a string key,value to a local persistent store.
-	 * @param key
-	 * @param value
-	 * @param ttl time to live. keys will be expired after that.
-	 * @param unit
-	 */
-	protected void saveToStore(String key, String value, long ttl, TimeUnit unit) {
-		mapstore.put(key, value, unit.toMillis(ttl));
+	private String beanName;
+	@Override
+	public void setBeanName(String name) {
+		beanName = name;
 	}
-	/**
-	 * Get from store
-	 * @param key
-	 * @return
-	 */
-	protected String getFromStore(String key) {
-		return mapstore.get(key);
-	}
-	/**
-	 * Check if present in store
-	 * @param key
-	 * @return
-	 */
-	protected boolean presentInStore(String key) {
-		return mapstore.containsKey(key);
-	}
-	/**
-	 * Remove from store
-	 * @param key
-	 */
-	protected void deleteFromStore(String key) {
-		mapstore.remove(key);
-	}
+		
 }
