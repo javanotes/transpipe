@@ -18,6 +18,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.reactiveminds.txpipe.err.BrokerException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.util.StringUtils;
 /**
  * Utility class to use Kafka topics as an edit log. Thus enabling to use Kafka as a simple key,value datastore.
  * Consequently this is to be used for comparatively small queues, since all data will be fetched into memory. Consider
@@ -26,7 +27,7 @@ import org.springframework.kafka.core.ConsumerFactory;
  * @author Sutanu_Dalui
  *
  */
-class KafkaTopicIterator implements Runnable, Iterator<List<String>>, Closeable{
+public class KafkaTopicIterator implements Runnable, Iterator<List<String>>, Closeable{
 
 	private Map<TopicPartition, Long> endOffsets;
 	private Consumer<String, String> consumer;
@@ -43,14 +44,16 @@ class KafkaTopicIterator implements Runnable, Iterator<List<String>>, Closeable{
 		super();
 		this.queryTopic = queryTopic;
 	}
+	private String groupId, clientId;
 	private boolean preserveOrder = false;
 	private volatile boolean initRan = false;
 	@Override
 	public void run() {
-		
-		try 
-		{
-			consumer = consumerFactory.createConsumer(UUID.randomUUID().toString(), "");
+
+		try {
+			consumer = consumerFactory.createConsumer(
+					StringUtils.hasText(getGroupId()) ? getGroupId() : UUID.randomUUID().toString(),
+					StringUtils.hasText(getClientId()) ? getClientId() : "-client");
 			List<TopicPartition> topicParts = consumer.partitionsFor(queryTopic).stream()
 					.map(p -> new TopicPartition(queryTopic, p.partition())).collect(Collectors.toList());
 
@@ -58,11 +61,10 @@ class KafkaTopicIterator implements Runnable, Iterator<List<String>>, Closeable{
 			consumer.seekToBeginning(consumer.assignment());
 			endOffsets = consumer.endOffsets(consumer.assignment());
 			initRan = true;
-		} 
-		catch (Exception e) {
+		} catch (Exception e) {
 			throw new BrokerException("Initialization of iterator failed", e);
 		}
-		
+
 	}
 	
 	public Map<TopicPartition, Long> getEndOffsets() {
@@ -113,6 +115,22 @@ class KafkaTopicIterator implements Runnable, Iterator<List<String>>, Closeable{
 
 	public void setPreserveOrder(boolean preserveOrder) {
 		this.preserveOrder = preserveOrder;
+	}
+
+	public String getClientId() {
+		return clientId;
+	}
+
+	public void setClientId(String clientId) {
+		this.clientId = clientId;
+	}
+
+	public String getGroupId() {
+		return groupId;
+	}
+
+	public void setGroupId(String groupId) {
+		this.groupId = groupId;
 	}
 	
 }

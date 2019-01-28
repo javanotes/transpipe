@@ -48,5 +48,25 @@ public interface Publisher {
 	 * @return
 	 */
 	Future<?> publishAsync(Event event);
-
+	
+	char KEY_SEP = '|';
+	/**
+	 * extract the pipeline from key.
+	 * @param key
+	 * @return
+	 */
+	public static String extractPipeline(String key) {
+		int i = -1;
+		if((i = key.indexOf(KEY_SEP)) != -1) {
+			return key.substring(0,i);
+		}
+		throw new IllegalArgumentException("Not a valid key '"+key+"'");
+	}
+	public static String extractTxnId(String key) {
+		int i = -1;
+		if((i = key.indexOf(KEY_SEP)) != -1) {
+			return key.substring(i+1);
+		}
+		throw new IllegalArgumentException("Not a valid key '"+key+"'");
+	}
 }

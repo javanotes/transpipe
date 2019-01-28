@@ -4,6 +4,6 @@ import java.util.function.Predicate;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 
-interface AllowedTransactionFilter extends Predicate<ConsumerRecord<String, String>>{
+public interface AllowedTransactionFilter extends Predicate<ConsumerRecord<String, String>>{
 	
 }

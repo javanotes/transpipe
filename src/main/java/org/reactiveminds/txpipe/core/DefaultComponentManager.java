@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.broker;
+package org.reactiveminds.txpipe.core;
 
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
@@ -15,7 +15,10 @@ import javax.annotation.PreDestroy;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.reactiveminds.txpipe.api.TransactionService;
+import org.reactiveminds.txpipe.broker.KafkaTopicIterator;
+import org.reactiveminds.txpipe.broker.PartitionAwareListenerContainer;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.BrokerAdmin;
 import org.reactiveminds.txpipe.core.api.Publisher;
 import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.Subscriber;
@@ -54,14 +57,14 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	@Autowired
 	Publisher pubAdmin;
 	@Autowired
-	KafkaAdminSupport admin;
+	BrokerAdmin admin;
 	
 	@Value("${txpipe.core.orchestrationTopic:managerTopic}") 
 	private String orchestrationTopic;
 	@Value("${txpipe.core.loadRegisterOnStart:true}") 
 	private boolean loadDefOnStart;
 	private ConcurrentMap<String, CreatePayload> register = new ConcurrentHashMap<>();
-	private PartitionAwareMessageListenerContainer commandListener, abortListener;
+	private PartitionAwareListenerContainer commandListener, abortListener;
 	@Value("${txpipe.core.readAbortOnStartup.maxWaitSecs:60}")
 	private long readAbortWait;
 	
@@ -74,7 +77,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	private void startAbortListener() {
 		int abortLag = (int) admin.getTotalLag(abortTopic(), groupId);
 		startupLatch = new CountDownLatch(abortLag);
-		abortListener = beanFactory.getBean(PartitionAwareMessageListenerContainer.class, abortTopic(), groupId, 1, new ErrorHandler() {
+		abortListener = beanFactory.getBean(PartitionAwareListenerContainer.class, abortTopic(), groupId, 1, new ErrorHandler() {
 			
 			@Override
 			public void handle(Exception t, ConsumerRecord<?, ?> data) {
@@ -95,7 +98,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	}
 	private void startContainer() {
 		startAbortListener();
-		commandListener = beanFactory.getBean(PartitionAwareMessageListenerContainer.class, orchestrationTopic, groupId, 1, new ErrorHandler() {
+		commandListener = beanFactory.getBean(PartitionAwareListenerContainer.class, orchestrationTopic, groupId, 1, new ErrorHandler() {
 			
 			@Override
 			public void handle(Exception t, ConsumerRecord<?, ?> data) {
@@ -351,6 +354,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 			try 
 			{
 				iter = beanFactory.getBean(KafkaTopicIterator.class, queryTopic);
+				iter.setGroupId(groupId+".DefinitionsLoader");
 				iter.run();
 				allDefinitions.clear();
 				while (iter.hasNext()) {

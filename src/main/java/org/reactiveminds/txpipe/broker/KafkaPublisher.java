@@ -19,7 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.requestreply.RequestReplyFuture;
 import org.springframework.util.Assert;
 
-public class KafkaPublisher implements Publisher {
+class KafkaPublisher implements Publisher {
 
 	private Event makeEvent(String message, String queue) {
 		Event e = new Event();
@@ -33,7 +33,7 @@ public class KafkaPublisher implements Publisher {
 	private static final Logger log = LoggerFactory.getLogger(KafkaPublisher.class);
 	
 	@Autowired
-	RequestReplyKafkaTemplate replyKafka;
+	ResponsiveKafkaTemplate replyKafka;
 	@Autowired
 	PayloadCodec codec;
 	
@@ -43,27 +43,7 @@ public class KafkaPublisher implements Publisher {
 		event.setPipeline(pipeline);
 		return publish(event);
 	}
-	/**
-	 * extract the pipeline from key.
-	 * @param key
-	 * @return
-	 */
-	public static String extractPipeline(String key) {
-		int i = -1;
-		if((i = key.indexOf(KEY_SEP)) != -1) {
-			return key.substring(0,i);
-		}
-		throw new IllegalArgumentException("Not a valid key '"+key+"'");
-	}
-	public static String extractTxnId(String key) {
-		int i = -1;
-		if((i = key.indexOf(KEY_SEP)) != -1) {
-			return key.substring(i+1);
-		}
-		throw new IllegalArgumentException("Not a valid key '"+key+"'");
-	}
-	static final char KEY_SEP = '|';
-	private String nextKey(Event event) {
+	private static String nextKey(Event event) {
 		Assert.hasText(event.getPipeline(), "Event pipeline not set " + event);
 		Assert.hasText(event.getTxnId(), "Event txnId not set "+ event);
 		return event.getPipeline()+KEY_SEP+event.getTxnId();

@@ -18,7 +18,7 @@ import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
 import org.springframework.kafka.listener.config.ContainerProperties;
 
-final class PartitionAwareMessageListenerContainer extends ConcurrentMessageListenerContainer<String, String>{
+public final class PartitionAwareListenerContainer extends ConcurrentMessageListenerContainer<String, String>{
 
 	public static class PartitionListener extends Observable implements ConsumerRebalanceListener{
 		private static final Logger log = LoggerFactory.getLogger("PartitionListener");
@@ -104,7 +104,7 @@ final class PartitionAwareMessageListenerContainer extends ConcurrentMessageList
 	 * @param containerProperties
 	 * @param partitionListener
 	 */
-	public PartitionAwareMessageListenerContainer(ConsumerFactory<String, String> consumerFactory,
+	public PartitionAwareListenerContainer(ConsumerFactory<String, String> consumerFactory,
 			ContainerProperties containerProperties, PartitionListener partitionListener) {
 		super(consumerFactory, containerProperties);
 		this.partitionListener = partitionListener;

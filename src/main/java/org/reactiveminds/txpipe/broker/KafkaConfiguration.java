@@ -15,8 +15,10 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.reactiveminds.txpipe.broker.PartitionAwareMessageListenerContainer.PartitionListener;
+import org.reactiveminds.txpipe.broker.PartitionAwareListenerContainer.PartitionListener;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.BrokerAdmin;
+import org.reactiveminds.txpipe.core.api.Publisher;
 import org.reactiveminds.txpipe.err.BrokerException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
@@ -25,6 +27,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Scope;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
@@ -37,7 +40,7 @@ import org.springframework.kafka.listener.config.ContainerProperties;
 
 @Configuration
 @EnableConfigurationProperties(KafkaProperties.class)
-class KafkaConfiguration  {
+public class KafkaConfiguration  {
 
 	private final KafkaProperties properties;
 	@Value("${txpipe.core.instanceId}")
@@ -102,7 +105,7 @@ class KafkaConfiguration  {
 	 * 
 	 */
 	@Bean
-    NewTopic replyTopic(@Value("${txpipe.broker.reply.topicPartition:8}") int partition , @Value("${txpipe.broker.reply.topicReplica:1}") short replica) {
+    NewTopic replyTopic(@Value("${txpipe.broker.reply.topicPartition:1}") int partition , @Value("${txpipe.broker.reply.topicReplica:1}") short replica) {
         return new NewTopic(ComponentManager.TXPIPE_REPLY_TOPIC, partition, replica);
     }
 	@Bean
@@ -110,11 +113,34 @@ class KafkaConfiguration  {
         return new NewTopic(ComponentManager.TXPIPE_STATE_TOPIC, partition, replica);
     }
 	@Bean
-    public RequestReplyKafkaTemplate txnRequestReplyTemplate() {
+    NewTopic notifTopic(@Value("${txpipe.broker.notif.topicPartition:1}") int partition , @Value("${txpipe.broker.notif.topicReplica:1}") short replica) {
+        return new NewTopic(ComponentManager.TXPIPE_NOTIF_TOPIC, partition, replica);
+    }
+	@Primary
+	@Bean
+    public ResponsiveKafkaTemplate txnRequestReplyTemplate() {
 		ContainerProperties containerProperties = new ContainerProperties(ComponentManager.TXPIPE_REPLY_TOPIC);
 		containerProperties.setGroupId(groupId);
 		KafkaMessageListenerContainer<String, String> container = new KafkaMessageListenerContainer<>(consumerFactory(), containerProperties);
-        return new RequestReplyKafkaTemplate(producerFactory(), container);
+		ResponsiveKafkaTemplate template = new ResponsiveKafkaTemplate(producerFactory(), container);
+		//template.start();//don't do this, else startup instance check will fail
+		return template;
+    }
+	
+	/**
+	 * 
+	 * @param futureMap
+	 * @param group
+	 * @param replyTopic
+	 * @return
+	 */
+	@Scope(scopeName = ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+	@Bean
+    public NotifyingKafkaTemplate txnRequestReplyTemplate2(String group, String replyTopic) {
+		ContainerProperties containerProperties = new ContainerProperties(replyTopic);
+		containerProperties.setGroupId(group);
+		KafkaMessageListenerContainer<String, String> container = new KafkaMessageListenerContainer<>(consumerFactory(), containerProperties);
+        return new NotifyingKafkaTemplate(producerFactory(), container);
     }
 	
 	@Bean
@@ -147,7 +173,7 @@ class KafkaConfiguration  {
 	@Scope(scopeName = ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 	@Lazy
 	@Bean
-    public PartitionAwareMessageListenerContainer 
+    public PartitionAwareListenerContainer 
       kafkaListenerContainer(String primaryTopic, String groupId, int concurrency, ErrorHandler errHandler) {
 		ContainerProperties props = new ContainerProperties(primaryTopic);
 		props.setAckMode(AckMode.MANUAL_IMMEDIATE);
@@ -155,7 +181,7 @@ class KafkaConfiguration  {
 		props.setErrorHandler(errHandler);
 		PartitionListener partListener = new PartitionListener(primaryTopic);
 		props.setConsumerRebalanceListener(partListener);
-		PartitionAwareMessageListenerContainer container =  new PartitionAwareMessageListenerContainer(consumerFactory(), props, partListener);
+		PartitionAwareListenerContainer container =  new PartitionAwareListenerContainer(consumerFactory(), props, partListener);
 		container.setConcurrency(concurrency);
 		container.setBeanName(primaryTopic);
 		return container;
@@ -168,7 +194,12 @@ class KafkaConfiguration  {
 		return new KafkaTopicIterator(queryTopic);
 	}
 	@Bean
-	KafkaAdminSupport adminSupport() {
-		return new KafkaAdminSupportImpl();
+	BrokerAdmin adminSupport() {
+		return new KafkaAdminSupport();
+	}
+	
+	@Bean
+	public Publisher publisher() {
+		return new KafkaPublisher();
 	}
 }

@@ -1,5 +1,7 @@
 package org.reactiveminds.txpipe.core.api;
 
+import java.util.concurrent.TimeUnit;
+
 import org.reactiveminds.txpipe.core.dto.TransactionState;
 
 /**
@@ -11,8 +13,10 @@ public interface TransactionMarker {
 	/**
 	 * Invoked when transaction starts
 	 * @param txnId
+	 * @param expiry
+	 * @param unit
 	 */
-	void begin(String txnId);
+	void begin(String txnId, long expiry, TimeUnit unit);
 	/**
 	 * Invoked when transaction ends
 	 * @param txnId

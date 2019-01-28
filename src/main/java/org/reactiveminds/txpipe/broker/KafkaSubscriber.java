@@ -9,9 +9,8 @@ import java.util.function.Predicate;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.record.TimestampType;
 import org.reactiveminds.txpipe.api.CommitFailedException;
-import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.api.TransactionService;
-import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.Publisher;
 import org.reactiveminds.txpipe.core.api.Subscriber;
 import org.reactiveminds.txpipe.core.api.TransactionMarker;
 import org.reactiveminds.txpipe.core.dto.Event;
@@ -25,16 +24,15 @@ import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.kafka.listener.AcknowledgingConsumerAwareMessageListener;
 import org.springframework.kafka.listener.ErrorHandler;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.util.StringUtils;
 
-abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareMessageListener<String,String> {
+public abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareMessageListener<String,String> {
 
 	static final Logger PLOG = LoggerFactory.getLogger("KafkaSubscriber");
 	private static final Logger CLOG = LoggerFactory.getLogger("CommitFailureLogger");
@@ -112,9 +110,9 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	@Value("${txpipe.core.discoveryAgent:}")
 	private String discoveryService;
 	
-	private PartitionAwareMessageListenerContainer container;
+	private PartitionAwareListenerContainer container;
 	@Autowired
-	BeanFactory factory;
+	ConfigurableApplicationContext factory;
 	
 	private EventRecorder eventRecorder;
 	private boolean isRecordEventEnabled;
@@ -125,8 +123,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	public void setPipelineId(String pipeline) {
 		this.pipeline = pipeline;
 	}
-	@Autowired
-	KafkaTemplate<String, String> pub;
+	
 	private DiscoveryAgent serviceLocator;
 	
 	private ExecutorService eventThread;
@@ -138,12 +135,12 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 			isRecordEventEnabled = true;
 		} catch (BeansException e1) {
 			isRecordEventEnabled = false;
-			PLOG.warn("EventRecorder was not configured");
+			PLOG.debug("EventRecorder was not configured");
 		}
 		if(isRecordEventEnabled && recordEventAsync) {
 			eventThread = Executors.newFixedThreadPool(recordEventAsyncMaxThreads, (r)-> new Thread(r, "SubcriberEventRecorder"));
 		}
-		addFilter(k -> pipeline.equals(KafkaPublisher.extractPipeline(k.key())));
+		addFilter(k -> pipeline.equals(Publisher.extractPipeline(k.key())));
 		addFilter(k -> System.currentTimeMillis() - k.timestamp() < TimeUnit.SECONDS.toMillis(recordExpirySecs));
 		try {
 			serviceLocator = StringUtils.hasText(discoveryService) ? (DiscoveryAgent) Class.forName(discoveryService).newInstance() : factory.getBean(DiscoveryAgent.class);
@@ -152,7 +149,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 			throw new TxPipeIntitializationException("Discovery class not loaded", e);
 		}
 		
-		container = factory.getBean(PartitionAwareMessageListenerContainer.class, listeningTopic, getListenerId(), concurreny, new ContainerErrHandler());
+		container = factory.getBean(PartitionAwareListenerContainer.class, getListeningTopic(), getListenerId(), concurreny, new ContainerErrHandler());
 		container.setupMessageListener(this);
 		container.setBeanName(getListenerId());
 		container.start();
@@ -164,7 +161,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		}
 		PLOG.debug("Container ready .. " + getListenerId());
 	}
-	protected final String listeningTopic;
+	private final String listeningTopic;
 	protected KafkaSubscriber(String topic) {
 		this.listeningTopic = topic;
 	}
@@ -188,27 +185,28 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	public String getListenerId() {
 		return pipeline+LISTENER_ID_SEP+componentId;
 	}
-
+	/**
+	 * Get the transaction expiration duration.
+	 * @return
+	 */
+	protected long getTxnExpiryDuration() {
+		//factory.getEnvironment().
+		return 5000;//TODO: configure per component
+	}
 	protected String componentId;
 	@Override
 	public void setComponentId(String componentId) {
 		this.componentId = componentId;
 	}
 	@Autowired
-	private TransactionMarker marker;
-	final void beginTxn(String txnId) {
-		marker.begin(txnId);
-	}
-	final void endTxn(String txnId, boolean success) {
-		marker.end(txnId, success);
-		pub.send(ComponentManager.TXPIPE_REPLY_TOPIC, txnId, success ? TransactionResult.COMMIT.name() : TransactionResult.ROLLBACK.name());
-	}
+	protected TransactionMarker txnMarker;
+	
 	/**
 	 * The core process method that should be executed. 
 	 * @param event
 	 * @return T the returning bean. It should not be {@linkplain Event} type
 	 */
-	final String process(Event event) {
+	protected final String process(Event event) {
 		//the bean should be there, as the starting the components will depend on it
 		TransactionService service = serviceLocator.getServiceById(componentId);
 		String response = null;
@@ -223,22 +221,23 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		if(isCommitMode) {
 			response = service.commit(event.getTxnId(), codec.decode(event.getPayload()));
 			state.setCommit(true);
-			marker.update(state);
+			txnMarker.update(state);
 		}
 		else {
 			service.rollback(event.getTxnId());
 			state.setCommit(false);
-			marker.update(state);
+			txnMarker.update(state);
 		}
 		return response;
 	}
 	@Autowired
-	PayloadCodec codec;
+	protected PayloadCodec codec;
 	/**
 	 * Abort on request timeout
 	 * @param event
 	 */
-	final void abort(Event event) {
+	@Override
+	public final void abort(Event event) {
 		//the bean should be there, as the starting the components will depend on it
 		TransactionService service = (TransactionService) factory.getBean(componentId);
 		try {
@@ -252,11 +251,12 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	 * Add another {@linkplain AllowedTransactionFilter} AND-ed to existing, if any.
 	 * @param f
 	 */
-	synchronized void addFilter(AllowedTransactionFilter f) {
+	@Override
+	public synchronized void addFilter(AllowedTransactionFilter f) {
 		filters = filters == null ? f : filters.and(f);
 	}
 	/**
-	 * Test all the filters to determine if this message will be delivered for processing
+	 * Test all the filters to determine if this message should be delivered for processing
 	 * @param key
 	 * @return
 	 */
@@ -264,7 +264,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		try {
 			return filters.test(data);
 		} catch (Exception e) {
-			CLOG.warn("Err on record key filtering - "+e.getMessage());
+			CLOG.warn("Error on record key filtering - "+e.getMessage());
 			CLOG.debug("", e);
 		}
 		return false;
@@ -330,5 +330,9 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	@Override
 	public boolean isRunning() {
 		return started;
+	}
+	@Override
+	public String getListeningTopic() {
+		return listeningTopic;
 	}
 }

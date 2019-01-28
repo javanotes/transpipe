@@ -1,6 +1,6 @@
 package org.reactiveminds.txpipe;
 
-import org.reactiveminds.txpipe.broker.ComponentManagerConfiguration;
+import org.reactiveminds.txpipe.core.ComponentManagerConfiguration;
 import org.reactiveminds.txpipe.core.ServiceManagerConfiguration;
 import org.reactiveminds.txpipe.spi.DiscoveryAgent;
 import org.reactiveminds.txpipe.spi.EventRecorder;

@@ -1,9 +1,10 @@
-package org.reactiveminds.txpipe.broker;
+package org.reactiveminds.txpipe.core;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.reactiveminds.txpipe.core.api.Publisher;
 import org.reactiveminds.txpipe.core.api.Subscriber;
 import org.reactiveminds.txpipe.core.dto.Event;
 import org.reactiveminds.txpipe.core.dto.PausePayload;
@@ -184,12 +185,12 @@ class ProcessorRegistry {
 			//TODO: if node goes down before paused component is resumed
 			//it will get processed on restart (wrong)
 			//we need to persist the filters?
-			commit.addFilter(k -> !txnId.equals(KafkaPublisher.extractTxnId(k.key())));
+			commit.addFilter(k -> !txnId.equals(Publisher.extractTxnId(k.key())));
 			if(rollback != null) {
 				log.warn("["+rollback.getListenerId()+"] Forcing rollback for transaction : "+txnId);
 				Event e = new Event();
 				e.setTxnId(txnId);
-				e.setDestination(rollback.listeningTopic);
+				e.setDestination(rollback.getListeningTopic());
 				rollback.abort(e);
 			}
 		}

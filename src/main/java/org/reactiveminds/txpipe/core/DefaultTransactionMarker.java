@@ -1,20 +1,27 @@
 package org.reactiveminds.txpipe.core;
 
-import javax.annotation.PostConstruct;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+
+import org.reactiveminds.txpipe.api.TransactionResult;
+import org.reactiveminds.txpipe.broker.NotifyingKafkaTemplate;
+import org.reactiveminds.txpipe.broker.ResponsiveKafkaTemplate;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
 import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.TransactionMarker;
 import org.reactiveminds.txpipe.core.dto.TransactionState;
 import org.reactiveminds.txpipe.spi.EventRecorder;
 import org.reactiveminds.txpipe.utils.JsonMapper;
-import org.reactiveminds.txpipe.utils.SelfExpiringHashMap;
 import org.reactiveminds.txpipe.utils.SelfExpiringMap.ExpirationListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.KafkaTemplate;
 
 /**
  * A default implementation of {@linkplain TransactionMarker} that rolls back transaction components
@@ -29,47 +36,66 @@ public class DefaultTransactionMarker extends ExpirationListener<String> impleme
 	@Autowired
 	private ServiceManager serviceManager;
 	@Autowired
-	private KafkaTemplate<String, String> kafkaTemplate;
+	BeanFactory beans;
+	private ResponsiveKafkaTemplate kafkaTemplate;
+	@Value("${txpipe.core.instanceId}")
+	private String groupId;
 	
 	private static final Logger log = LoggerFactory.getLogger("TransactionMarker");
-	private SelfExpiringHashMap<String, Object> expiryCache;
 	
-	private final Object marker = new Object();
+	//this has to be a central configuration, same for all nodes
 	@Value("${txpipe.core.abortTxnOnTimeout:true}")
 	private boolean abortOnTimeout;
 	@Value("${txpipe.core.abortTxnOnTimeout.expiryMillis:5000}")
 	private long expiryMillis;
 	
+	private ExecutorService workerThread;
+	
 	@PostConstruct
 	private void init() {
 		if (abortOnTimeout) {
-			expiryCache = new SelfExpiringHashMap<>(expiryMillis);
-			expiryCache.addListener(this);
-			Thread t = new Thread(expiryCache, "TransactionExpirationWorker");
-			t.setDaemon(true);
-			t.start();
+			kafkaTemplate = beans.getBean(NotifyingKafkaTemplate.class, groupId+".ExpiryNotif", ComponentManager.TXPIPE_NOTIF_TOPIC);
+			((NotifyingKafkaTemplate) kafkaTemplate).setExpiryListener(this);
+			workerThread = Executors.newSingleThreadExecutor(r -> new Thread(r, "TransactionExpiryNotifRunner"));
+			workerThread.execute((NotifyingKafkaTemplate) kafkaTemplate);//starts the expired entry notifier thread
+			kafkaTemplate.start();//starts the reply topic listener thread
+		}
+		else {
+			kafkaTemplate = beans.getBean(ResponsiveKafkaTemplate.class);
 		}
 	}
 	@Override
-	public void begin(String txnId) {
+	public void begin(String txnId, long expiry, TimeUnit unit) {
 		log.info("Begin : "+txnId);
-		expiryCache.put(txnId, marker);
+		if (abortOnTimeout) {
+			((NotifyingKafkaTemplate) kafkaTemplate).promiseNotification(txnId, expiry, unit);
+		}
 	}
-
 	@Override
 	public void end(String txnId, boolean commit) {
 		log.info("End : "+txnId+", commit? "+commit);
-		expiryCache.remove(txnId);
+		if (abortOnTimeout) {
+			kafkaTemplate.send(ComponentManager.TXPIPE_NOTIF_TOPIC, txnId, commit ? TransactionResult.COMMIT.name() : TransactionResult.ROLLBACK.name());//this would remove the entry added in begin()
+		}
+		kafkaTemplate.send(ComponentManager.TXPIPE_REPLY_TOPIC, txnId, commit ? TransactionResult.COMMIT.name() : TransactionResult.ROLLBACK.name());
 	}
 
 	@Override
 	protected void onExpiry(String key) {
 		log.warn("Aborting txn on expiration : " + key);
-		serviceManager.abort(key);
+		if (abortOnTimeout) {
+			serviceManager.abort(key);
+		}
 	}
 	@Override
 	public void update(TransactionState state) {
 		kafkaTemplate.send(ComponentManager.TXPIPE_STATE_TOPIC, state.getTransactionId(), JsonMapper.serialize(state));
 	}
 
+	@PreDestroy
+	private void onDestroy() {
+		if(workerThread != null)
+			workerThread.shutdown();
+	}
+	
 }

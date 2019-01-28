@@ -36,6 +36,12 @@ public class LocalMapStoreFactory implements FactoryBean<LocalMapStore> {
 		db = DBMaker.fileDB(ResourceUtils.getFile(fileDbPath))
 				.transactionEnable()
 				.fileMmapEnable()
+				.fileMmapPreclearDisable()   // Make mmap file faster
+
+		        // Unmap (release resources) file when its closed.
+		        // That can cause JVM crash if file is accessed after it was unmapped
+		        // (there is possible race condition).
+				.cleanerHackEnable()
 				.make();
 	}
 	@PreDestroy

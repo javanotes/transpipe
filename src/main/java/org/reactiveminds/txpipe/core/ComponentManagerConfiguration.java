@@ -1,6 +1,6 @@
-package org.reactiveminds.txpipe.broker;
+package org.reactiveminds.txpipe.core;
 
-import org.reactiveminds.txpipe.core.DefaultTransactionMarker;
+import org.reactiveminds.txpipe.broker.KafkaConfiguration;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
 import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.Subscriber;
@@ -24,11 +24,7 @@ public class ComponentManagerConfiguration {
 	public ComponentManager componentRegistry() {
 		return new DefaultComponentManager();
 	}
-	@Bean
-	public KafkaPublisher publisher() {
-		return new KafkaPublisher();
-	}
-	
+
 	@Bean(ServiceManager.COMMIT_PROCESSOR_BEAN_NAME)
 	@Scope(scopeName = ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 	@Lazy
@@ -42,5 +38,4 @@ public class ComponentManagerConfiguration {
 	public Subscriber rollbackProcessor(String queueName) {
 		return new RollbackProcessor(queueName);
 	}
-	
 }

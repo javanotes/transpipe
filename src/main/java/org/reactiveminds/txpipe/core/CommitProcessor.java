@@ -1,4 +1,6 @@
-package org.reactiveminds.txpipe.broker;
+package org.reactiveminds.txpipe.core;
+
+import java.util.concurrent.TimeUnit;
 
 import org.reactiveminds.txpipe.core.dto.Event;
 import org.slf4j.Logger;
@@ -23,7 +25,7 @@ class CommitProcessor extends RollbackProcessor {
 	
 	@Override
 	public String toString() {
-		return "CommitProcessor [commitLink=" + commitLink + ", listeningTopic=" + listeningTopic + ", componentId="
+		return "CommitProcessor [commitLink=" + commitLink + ", listeningTopic=" + getListeningTopic() + ", componentId="
 				+ componentId + ", rollbackLink=" + getRollbackLink() + "]";
 	}
 	@Override
@@ -39,8 +41,9 @@ class CommitProcessor extends RollbackProcessor {
 	}
 	@Override
 	public void consume(Event event) {
-		if(initialStep)
-			beginTxn(event.getTxnId());
+		if(initialStep) {
+			txnMarker.begin(event.getTxnId(), getTxnExpiryDuration(), TimeUnit.MILLISECONDS);
+		}
 		try 
 		{
 			String response = process(event);
@@ -49,7 +52,7 @@ class CommitProcessor extends RollbackProcessor {
 			}
 			else {
 				//this was the last component
-				endTxn(event.getTxnId(), true);
+				txnMarker.end(event.getTxnId(), true);
 			}
 		} catch (Exception e) {
 			if (StringUtils.hasText(getRollbackLink())) {

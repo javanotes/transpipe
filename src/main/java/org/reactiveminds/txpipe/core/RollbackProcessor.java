@@ -1,5 +1,6 @@
-package org.reactiveminds.txpipe.broker;
+package org.reactiveminds.txpipe.core;
 
+import org.reactiveminds.txpipe.broker.KafkaSubscriber;
 import org.reactiveminds.txpipe.core.api.Publisher;
 import org.reactiveminds.txpipe.core.dto.Event;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,7 +10,7 @@ class RollbackProcessor extends KafkaSubscriber {
 	
 	@Override
 	public String toString() {
-		return "RollbackProcessor [rollbackLink=" + rollbackLink + ", listeningTopic=" + listeningTopic
+		return "RollbackProcessor [rollbackLink=" + rollbackLink + ", listeningTopic=" + getListeningTopic()
 				+ ", componentId=" + componentId + "]";
 	}
 	@Autowired
@@ -42,7 +43,7 @@ class RollbackProcessor extends KafkaSubscriber {
 			}
 			else {
 				//first component reached
-				endTxn(event.getTxnId(), false);
+				txnMarker.end(event.getTxnId(), false);
 			}
 		}
 		
