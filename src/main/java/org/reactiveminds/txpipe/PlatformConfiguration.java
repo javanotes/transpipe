@@ -5,15 +5,14 @@ import org.reactiveminds.txpipe.core.ServiceManagerConfiguration;
 import org.reactiveminds.txpipe.spi.DiscoveryAgent;
 import org.reactiveminds.txpipe.spi.EventRecorder;
 import org.reactiveminds.txpipe.spi.PayloadCodec;
-import org.reactiveminds.txpipe.spi.TransactionMarker;
 import org.reactiveminds.txpipe.spi.impl.DefaultDiscoveryAgent;
 import org.reactiveminds.txpipe.spi.impl.JavaScriptDiscoveryAgent;
 import org.reactiveminds.txpipe.spi.impl.LogbackEventRecorder;
 import org.reactiveminds.txpipe.spi.impl.SnappyPayloadCodec;
-import org.reactiveminds.txpipe.spi.impl.TransactionExpirationMarker;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -29,11 +28,8 @@ import org.springframework.context.annotation.Import;
 @Configuration
 @Import({ServiceManagerConfiguration.class, ComponentManagerConfiguration.class})
 public class PlatformConfiguration implements ApplicationContextAware{
-	@ConditionalOnMissingBean
-	@Bean
-	TransactionMarker transactionMarker() {
-		return new TransactionExpirationMarker();
-	}
+	
+	@ConditionalOnProperty(name = "txpipe.event.recorder.enable")
 	@ConditionalOnMissingBean
 	@Bean
 	EventRecorder eventRecorder() {

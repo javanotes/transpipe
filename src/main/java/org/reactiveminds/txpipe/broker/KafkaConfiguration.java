@@ -16,6 +16,7 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.reactiveminds.txpipe.broker.PartitionAwareMessageListenerContainer.PartitionListener;
+import org.reactiveminds.txpipe.core.api.ComponentManager;
 import org.reactiveminds.txpipe.err.BrokerException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
@@ -41,7 +42,6 @@ class KafkaConfiguration  {
 	private final KafkaProperties properties;
 	@Value("${txpipe.core.instanceId}")
 	private String groupId;
-	
 	public KafkaConfiguration(KafkaProperties properties) {
 		super();
 		this.properties = properties;
@@ -101,14 +101,17 @@ class KafkaConfiguration  {
 	/**
 	 * 
 	 */
-	static final String TXPIPE_REPLY_QUEUE = "txnReply";
 	@Bean
-    NewTopic topic() {
-        return new NewTopic(TXPIPE_REPLY_QUEUE, 8, (short) 1);
+    NewTopic replyTopic(@Value("${txpipe.broker.reply.topicPartition:8}") int partition , @Value("${txpipe.broker.reply.topicReplica:1}") short replica) {
+        return new NewTopic(ComponentManager.TXPIPE_REPLY_TOPIC, partition, replica);
+    }
+	@Bean
+    NewTopic stateTopic(@Value("${txpipe.broker.state.topicPartition:8}") int partition , @Value("${txpipe.broker.state.topicReplica:1}") short replica) {
+        return new NewTopic(ComponentManager.TXPIPE_STATE_TOPIC, partition, replica);
     }
 	@Bean
     public RequestReplyKafkaTemplate txnRequestReplyTemplate() {
-		ContainerProperties containerProperties = new ContainerProperties(TXPIPE_REPLY_QUEUE);
+		ContainerProperties containerProperties = new ContainerProperties(ComponentManager.TXPIPE_REPLY_TOPIC);
 		containerProperties.setGroupId(groupId);
 		KafkaMessageListenerContainer<String, String> container = new KafkaMessageListenerContainer<>(consumerFactory(), containerProperties);
         return new RequestReplyKafkaTemplate(producerFactory(), container);

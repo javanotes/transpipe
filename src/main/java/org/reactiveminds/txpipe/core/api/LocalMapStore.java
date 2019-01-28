@@ -17,7 +17,7 @@ public interface LocalMapStore extends DisposableBean {
 	String name();
 	/**
 	 * Starts the expiration worker thread. Either this method has to be invoked, or the instance has
-	 * to be submitted for expiration to take place
+	 * to be submitted as a runnable, for expiration to take place
 	 */
 	void start();
 	/**

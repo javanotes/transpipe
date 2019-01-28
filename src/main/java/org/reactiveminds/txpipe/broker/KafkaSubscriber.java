@@ -11,17 +11,20 @@ import org.apache.kafka.common.record.TimestampType;
 import org.reactiveminds.txpipe.api.CommitFailedException;
 import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.api.TransactionService;
+import org.reactiveminds.txpipe.core.api.ComponentManager;
 import org.reactiveminds.txpipe.core.api.Subscriber;
+import org.reactiveminds.txpipe.core.api.TransactionMarker;
 import org.reactiveminds.txpipe.core.dto.Event;
+import org.reactiveminds.txpipe.core.dto.TransactionState;
 import org.reactiveminds.txpipe.err.TxPipeIntitializationException;
 import org.reactiveminds.txpipe.spi.DiscoveryAgent;
 import org.reactiveminds.txpipe.spi.EventRecord;
 import org.reactiveminds.txpipe.spi.EventRecorder;
 import org.reactiveminds.txpipe.spi.PayloadCodec;
-import org.reactiveminds.txpipe.spi.TransactionMarker;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -53,11 +56,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 						+ "] at offset " + data.offset() + ". Key - " + data.key(), t);
 				OLOG.debug("Error in consumed message : " + data.value());
 			}
-			if (recordEventAsync) {
-				eventThread.submit(new EventRecorderRunner(data, t));
-			}
-			else
-				new EventRecorderRunner(data, t).run();
+			recordEvent(data, t);
 		}
 	}
 	/**
@@ -104,9 +103,9 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	private boolean awaitConsumerRebalance;
 	@Value("${txpipe.broker.awaitConsumerRebalance.maxWaitSecs:30}")
 	private long awaitConsumerRebalanceMaxWait;
-	@Value("${txpipe.event.recordAsync:true}")
+	@Value("${txpipe.event.recorder.async:true}")
 	private boolean recordEventAsync;
-	@Value("${txpipe.event.recordAsync.maxThreads:2}")
+	@Value("${txpipe.event.recorder.async.maxThreads:2}")
 	private int recordEventAsyncMaxThreads;
 	@Value("${txpipe.broker.recordExpirySecs:60}")
 	private long recordExpirySecs;
@@ -116,8 +115,9 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	private PartitionAwareMessageListenerContainer container;
 	@Autowired
 	BeanFactory factory;
-	@Autowired
-	EventRecorder eventRecorder;
+	
+	private EventRecorder eventRecorder;
+	private boolean isRecordEventEnabled;
 	
 	protected boolean isCommitMode = false;
 	protected String pipeline;
@@ -133,7 +133,14 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	private volatile boolean started = false;
 	@Override
 	public void run() {
-		if(recordEventAsync) {
+		try {
+			eventRecorder = factory.getBean(EventRecorder.class);
+			isRecordEventEnabled = true;
+		} catch (BeansException e1) {
+			isRecordEventEnabled = false;
+			PLOG.warn("EventRecorder was not configured");
+		}
+		if(isRecordEventEnabled && recordEventAsync) {
 			eventThread = Executors.newFixedThreadPool(recordEventAsyncMaxThreads, (r)-> new Thread(r, "SubcriberEventRecorder"));
 		}
 		addFilter(k -> pipeline.equals(KafkaPublisher.extractPipeline(k.key())));
@@ -194,7 +201,7 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	}
 	final void endTxn(String txnId, boolean success) {
 		marker.end(txnId, success);
-		pub.send(KafkaConfiguration.TXPIPE_REPLY_QUEUE, txnId, success ? TransactionResult.COMMIT.name() : TransactionResult.ROLLBACK.name());
+		pub.send(ComponentManager.TXPIPE_REPLY_TOPIC, txnId, success ? TransactionResult.COMMIT.name() : TransactionResult.ROLLBACK.name());
 	}
 	/**
 	 * The core process method that should be executed. 
@@ -204,13 +211,26 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	final String process(Event event) {
 		//the bean should be there, as the starting the components will depend on it
 		TransactionService service = serviceLocator.getServiceById(componentId);
+		String response = null;
+		
+		TransactionState state = new TransactionState();
+		state.setComponent(componentId);
+		state.setPipeline(pipeline);
+		state.setSequence((short) event.getEventId());
+		state.setTransactionId(event.getTxnId());
+		state.setTimestamp(event.getTimestamp());
+		
 		if(isCommitMode) {
-			return service.commit(event.getTxnId(), codec.decode(event.getPayload()));
+			response = service.commit(event.getTxnId(), codec.decode(event.getPayload()));
+			state.setCommit(true);
+			marker.update(state);
 		}
 		else {
 			service.rollback(event.getTxnId());
+			state.setCommit(false);
+			marker.update(state);
 		}
-		return null;
+		return response;
 	}
 	@Autowired
 	PayloadCodec codec;
@@ -276,11 +296,12 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 		}
 	}
 	private void recordEvent(ConsumerRecord<?, ?> data, Exception e) {
-		if (recordEventAsync) {
-			eventThread.submit(new EventRecorderRunner(data, e));
+		if (isRecordEventEnabled) {
+			if (recordEventAsync) {
+				eventThread.submit(new EventRecorderRunner(data, e));
+			} else
+				new EventRecorderRunner(data, e).run();
 		}
-		else
-			new EventRecorderRunner(data, e).run();
 	}
 	/**
 	 * To record event on a forced rollback.
@@ -288,8 +309,10 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	 * @param e
 	 */
 	private void recordEvent(Event event, Exception e) {
-		recordEvent(new ConsumerRecord<>(event.getDestination(), -1, -1, event.getTimestamp(),
-				TimestampType.NO_TIMESTAMP_TYPE, 0, 0, 0, event.getTxnId(), event.getPayload()), e);
+		if (isRecordEventEnabled) {
+			recordEvent(new ConsumerRecord<>(event.getDestination(), -1, -1, event.getTimestamp(),
+					TimestampType.NO_TIMESTAMP_TYPE, 0, 0, 0, event.getTxnId(), event.getPayload()), e);
+		}
 	}
 	private volatile boolean paused = false;
 	@Override

@@ -15,7 +15,7 @@ public class Event {
 	public void setTxnId(String txnId) {
 		this.txnId = txnId;
 	}
-	public long getEventId() {
+	public int getEventId() {
 		return eventId;
 	}
 	

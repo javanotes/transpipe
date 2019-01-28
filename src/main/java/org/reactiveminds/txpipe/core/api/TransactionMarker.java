@@ -1,4 +1,7 @@
-package org.reactiveminds.txpipe.spi;
+package org.reactiveminds.txpipe.core.api;
+
+import org.reactiveminds.txpipe.core.dto.TransactionState;
+
 /**
  * Interface to extend functionalities on begin/end of transactions.
  * @author Sutanu_Dalui
@@ -16,4 +19,9 @@ public interface TransactionMarker {
 	 * @param commit
 	 */
 	void end(String txnId, boolean commit);
+	/**
+	 * Update the transaction state progression.
+	 * @param state
+	 */
+	void update(TransactionState state);
 }

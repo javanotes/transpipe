@@ -1,8 +1,10 @@
 package org.reactiveminds.txpipe.broker;
 
+import org.reactiveminds.txpipe.core.DefaultTransactionMarker;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
 import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.Subscriber;
+import org.reactiveminds.txpipe.core.api.TransactionMarker;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,6 +16,10 @@ import org.springframework.context.annotation.Scope;
 @Import(KafkaConfiguration.class)
 public class ComponentManagerConfiguration {
 
+	@Bean
+	TransactionMarker transactionMarker() {
+		return new DefaultTransactionMarker();
+	}
 	@Bean
 	public ComponentManager componentRegistry() {
 		return new DefaultComponentManager();

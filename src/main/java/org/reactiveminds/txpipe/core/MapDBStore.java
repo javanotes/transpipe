@@ -45,10 +45,7 @@ class MapDBStore extends SelfExpiringHashMap<String, String> implements LocalMap
 	@Override
 	public void start() {
 		if(started.compareAndSet(false, true)) {
-			workerThread = Executors.newSingleThreadExecutor(r->{
-				Thread t = new Thread(r, "MapStoreWorker."+name());
-				return t;
-			});
+			workerThread = Executors.newSingleThreadExecutor(r -> new Thread(r, "MapStoreWorker."+name()));
 			workerThread.execute(this);
 		}
 	}
