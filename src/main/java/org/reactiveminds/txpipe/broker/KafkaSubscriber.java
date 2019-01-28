@@ -272,14 +272,10 @@ abstract class KafkaSubscriber implements Subscriber,AcknowledgingConsumerAwareM
 	@Override
 	public void onMessage(ConsumerRecord<String, String> data, Acknowledgment ack,
 			org.apache.kafka.clients.consumer.Consumer<?, ?> consumer) {
-		
-		try {
-			if(isPassFilter(data)) {
-				doOnMessage(data);
-			}
-		} 
-		finally {
-			ack.acknowledge();//no message retry as this is a transactional system
+		//at-most-once delivery, being a transaction system
+		ack.acknowledge();
+		if(isPassFilter(data)) {
+			doOnMessage(data);
 		}
 	}
 	private void doOnMessage(ConsumerRecord<String, String> data) {
