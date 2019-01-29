@@ -4,8 +4,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.reactiveminds.txpipe.core.api.Publisher;
-import org.reactiveminds.txpipe.core.api.Subscriber;
+import org.reactiveminds.txpipe.broker.Subscriber;
+import org.reactiveminds.txpipe.broker.ConsumerRecordFilter.TransactionAbortedFilter;
 import org.reactiveminds.txpipe.core.dto.Event;
 import org.reactiveminds.txpipe.core.dto.PausePayload;
 import org.reactiveminds.txpipe.core.dto.ResumePayload;
@@ -182,10 +182,7 @@ class ProcessorRegistry {
 			this.rollback = rollback;
 		}
 		public void abort(String txnId) {
-			//TODO: if node goes down before paused component is resumed
-			//it will get processed on restart (wrong)
-			//we need to persist the filters?
-			commit.addFilter(k -> !txnId.equals(Publisher.extractTxnId(k.key())));
+			commit.addFilter(new TransactionAbortedFilter(txnId));
 			if(rollback != null) {
 				log.warn("["+rollback.getListenerId()+"] Forcing rollback for transaction : "+txnId);
 				Event e = new Event();
@@ -196,9 +193,9 @@ class ProcessorRegistry {
 		}
 		public void stop() {
 			if(commit != null)
-				commit.stop();
+				commit.destroy();
 			if(rollback != null)
-				rollback.stop();
+				rollback.destroy();
 		}
 	}
 	

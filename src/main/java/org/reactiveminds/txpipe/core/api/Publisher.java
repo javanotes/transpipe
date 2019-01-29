@@ -3,8 +3,8 @@ package org.reactiveminds.txpipe.core.api;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.core.dto.Event;
+import org.reactiveminds.txpipe.core.dto.TransactionResult;
 
 public interface Publisher {
 

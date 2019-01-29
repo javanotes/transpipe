@@ -16,7 +16,7 @@ jar {
 }
 
 dependencies {
-    implementation('org.reactiveminds.txpipe:txpipe-sdk:0.0.1')
+    implementation('org.reactiveminds.txpipe:txpipe-sdk:0.1.0')
     //testImplementation('org.springframework.boot:spring-boot-starter-test')
 }
 

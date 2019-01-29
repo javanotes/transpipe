@@ -20,12 +20,12 @@ import org.springframework.context.annotation.Import;
 @Configuration
 public class AppConfiguration {
 	static final Logger log = LoggerFactory.getLogger("Service_Log");
-	@Bean
+	/*@Bean
 	TransactionService checkCredit() {
 		return new CreditCheckingService();
-	}
+	}*/
 	
-	@Bean
+	/*@Bean
 	TransactionService bookTicket() {
 		return new AbstractTransactionService() {
 			
@@ -40,7 +40,8 @@ public class AppConfiguration {
 				return "";
 			}
 		};
-	}
+	}*/
+	
 	
 	@Bean
 	TransactionService notifyUser() {
@@ -59,6 +60,7 @@ public class AppConfiguration {
 		};
 	}
 	
+	
 	@Bean
 	TransactionService notifyUserFailed() {
 		return new AbstractTransactionService() {
@@ -74,6 +76,4 @@ public class AppConfiguration {
 			}
 		};
 	}
-	
-
 }

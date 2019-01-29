@@ -6,9 +6,9 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.core.api.Publisher;
 import org.reactiveminds.txpipe.core.dto.Event;
+import org.reactiveminds.txpipe.core.dto.TransactionResult;
 import org.reactiveminds.txpipe.err.BrokerException;
 import org.reactiveminds.txpipe.spi.PayloadCodec;
 import org.reactiveminds.txpipe.utils.JsonMapper;
@@ -92,18 +92,17 @@ class KafkaPublisher implements Publisher {
 	public TransactionResult execute(String payload, String queue, String pipeline, long wait, TimeUnit unit) {
 		Event event = makeEvent(payload, queue);
 		event.setPipeline(pipeline);
-		TransactionResult r = TransactionResult.ERROR;
+		TransactionResult r = new TransactionResult();
+		r.setStatus(TransactionResult.State.ERROR);
 		r.setTxnId(event.getTxnId());
 		try {
 			String res = sendAndReceive(event, unit, wait);
-			r = TransactionResult.valueOf(res);
-			r.setTxnId(event.getTxnId());
+			r = JsonMapper.deserialize(res, TransactionResult.class);
 		} 
 		catch (TimeoutException e) {
 			log.error(e.getMessage());
 			log.debug("", e);
-			r = TransactionResult.TIMEOUT;
-			r.setTxnId(event.getTxnId());
+			r.setStatus(TransactionResult.State.TIMEOUT);
 		}
 		catch (Exception e) {
 			log.error("", e);

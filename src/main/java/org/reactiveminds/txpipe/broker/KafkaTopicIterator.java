@@ -1,6 +1,5 @@
 package org.reactiveminds.txpipe.broker;
 
-import java.io.Closeable;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Iterator;
@@ -27,7 +26,7 @@ import org.springframework.util.StringUtils;
  * @author Sutanu_Dalui
  *
  */
-public class KafkaTopicIterator implements Runnable, Iterator<List<String>>, Closeable{
+public class KafkaTopicIterator implements Runnable, Iterator<List<String>>, AutoCloseable{
 
 	private Map<TopicPartition, Long> endOffsets;
 	private Consumer<String, String> consumer;

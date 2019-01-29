@@ -6,27 +6,33 @@ import java.util.stream.Collectors;
 
 import org.springframework.util.Assert;
 
-public class CreatePayload {
+public class PipelineDef {
 
 	/**
 	 * Copy constructor
 	 * @param pipelineId
 	 * @param components
 	 */
-	public CreatePayload(String pipelineId, List<ComponentDef> components) {
+	public PipelineDef(String pipelineId, List<ComponentDef> components) {
 		super();
 		this.pipelineId = pipelineId;
 		this.components.addAll(components.stream().map(c -> c.copy()).collect(Collectors.toList()));
 	}
 
-	public CreatePayload() {
+	public PipelineDef() {
 	}
 	
-	public CreatePayload(String pipelineId) {
+	public PipelineDef(String pipelineId) {
 		super();
 		this.pipelineId = pipelineId;
 	}
-
+	/**
+	 * Expiration duration for this transaction pipeline. 
+	 */
+	private long expiryMillis = 5000;
+	/**
+	 * The unique identifier for this transaction pipeline
+	 */
 	private String pipelineId;
 	private final List<ComponentDef> components = new ArrayList<>();
 	static final String COMMIT_SUFFIX = "__C";
@@ -47,7 +53,7 @@ public class CreatePayload {
 	 * @param txnBeanName
 	 * @return
 	 */
-	public CreatePayload addComponent(String txnBeanName) {
+	public PipelineDef addComponent(String txnBeanName) {
 		Assert.notNull(pipelineId, "pipelineId is not set");
 		int i = components.size();
 		ComponentDef current = new ComponentDef();
@@ -73,6 +79,14 @@ public class CreatePayload {
 	@Override
 	public String toString() {
 		return "PipelineDef [pipelineId=" + pipelineId + ", components=" + components + "]";
+	}
+
+	public long getExpiryMillis() {
+		return expiryMillis;
+	}
+
+	public void setExpiryMillis(long expiryMillis) {
+		this.expiryMillis = expiryMillis;
 	}
 	
 	

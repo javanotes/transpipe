@@ -9,23 +9,21 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
-
-import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.reactiveminds.txpipe.api.TransactionService;
+import org.reactiveminds.txpipe.broker.ConsumerRecordFilter.PipelineAllowedFilter;
+import org.reactiveminds.txpipe.broker.KafkaSubscriber;
 import org.reactiveminds.txpipe.broker.KafkaTopicIterator;
 import org.reactiveminds.txpipe.broker.PartitionAwareListenerContainer;
-import org.reactiveminds.txpipe.core.api.ComponentManager;
 import org.reactiveminds.txpipe.core.api.BrokerAdmin;
+import org.reactiveminds.txpipe.core.api.ComponentManager;
+import org.reactiveminds.txpipe.core.api.Processor;
 import org.reactiveminds.txpipe.core.api.Publisher;
 import org.reactiveminds.txpipe.core.api.ServiceManager;
-import org.reactiveminds.txpipe.core.api.Subscriber;
 import org.reactiveminds.txpipe.core.dto.Command;
 import org.reactiveminds.txpipe.core.dto.ComponentDef;
-import org.reactiveminds.txpipe.core.dto.CreatePayload;
 import org.reactiveminds.txpipe.core.dto.PausePayload;
+import org.reactiveminds.txpipe.core.dto.PipelineDef;
 import org.reactiveminds.txpipe.core.dto.ResumePayload;
 import org.reactiveminds.txpipe.core.dto.StopPayload;
 import org.reactiveminds.txpipe.err.TxPipeConfigurationException;
@@ -39,12 +37,18 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.NestedExceptionUtils;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.listener.AcknowledgingConsumerAwareMessageListener;
 import org.springframework.kafka.listener.ErrorHandler;
-import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.util.StringUtils;
 
-class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerAwareMessageListener<String,String> {
+class DefaultComponentManager extends KafkaSubscriber implements ComponentManager{
+
+	DefaultComponentManager(String topic) {
+		super(topic);
+		atMostOnceDelivery = false;
+		awaitConsumerRebalance = true;
+		awaitConsumerRebalanceMaxWait = 30;
+		concurreny = 1;
+	}
 
 	static final Logger log = LoggerFactory.getLogger("ComponentManager");
 	
@@ -59,12 +63,11 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	@Autowired
 	BrokerAdmin admin;
 	
-	@Value("${txpipe.core.orchestrationTopic:managerTopic}") 
-	private String orchestrationTopic;
+	
 	@Value("${txpipe.core.loadRegisterOnStart:true}") 
 	private boolean loadDefOnStart;
-	private ConcurrentMap<String, CreatePayload> register = new ConcurrentHashMap<>();
-	private PartitionAwareListenerContainer commandListener, abortListener;
+	private ConcurrentMap<String, PipelineDef> register = new ConcurrentHashMap<>();
+	private PartitionAwareListenerContainer abortListener;
 	@Value("${txpipe.core.readAbortOnStartup.maxWaitSecs:60}")
 	private long readAbortWait;
 	
@@ -72,7 +75,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	private String groupId;
 	private CountDownLatch startupLatch;
 	private String abortTopic() {
-		return orchestrationTopic+ServiceManager.ABORT_TOPIC_SUFFIX;
+		return getListeningTopic()+ServiceManager.ABORT_TOPIC_SUFFIX;
 	}
 	private void startAbortListener() {
 		int abortLag = (int) admin.getTotalLag(abortTopic(), groupId);
@@ -98,25 +101,16 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	}
 	private void startContainer() {
 		startAbortListener();
-		commandListener = beanFactory.getBean(PartitionAwareListenerContainer.class, orchestrationTopic, groupId, 1, new ErrorHandler() {
-			
-			@Override
-			public void handle(Exception t, ConsumerRecord<?, ?> data) {
-				log.error("Error on command consume "+data, t);
-			}
-		});
-		commandListener.setupMessageListener(this);
-		commandListener.start();
 		log.info("Joining cluster with instanceId '"+groupId+"' ..");
-		
-		commandListener.getPartitionListener().awaitOnReady(30, TimeUnit.SECONDS);
-		if(commandListener.getPartitionListener().getSnapshot().isEmpty())
-			throw new TxPipeConfigurationException("No orchestration partitions assigned! Is 'txpipe.core.instanceId' configured to be unique across cluster? You may consider try after sometime to allow some time to balance");
+		run();
+		if (isPartitionUnassigned())
+			throw new TxPipeConfigurationException(
+					"No orchestration partitions assigned! Is 'txpipe.core.instanceId' configured to be unique across cluster? You may consider try after sometime to allow some time to balance");
 	}
 	private void loadMetadata() {
 		if (loadDefOnStart) {
 			log.info("Start reading existing metadata ..");
-			AllDefinitionsLoader loader = new AllDefinitionsLoader(orchestrationTopic);
+			AllDefinitionsLoader loader = new AllDefinitionsLoader(getListeningTopic());
 			try {
 				loader.run();
 				loader.allDefinitions.forEach(def -> doPut(def));
@@ -130,42 +124,40 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		register.values().forEach(p -> startPipeline(p, true));
 	}
 	private void verifyOTPartitions() {
-		admin.createTopic(orchestrationTopic, 1, (short) 1);
-		int c = admin.getPartitionCount(orchestrationTopic);
+		admin.createTopic(getListeningTopic(), 1, (short) 1);
+		int c = admin.getPartitionCount(getListeningTopic());
 		if(c != 1)
-			throw new TxPipeConfigurationException(orchestrationTopic +" should be a single partition topic. You may consider try after sometime to allow some time to balance");
+			throw new TxPipeConfigurationException(getListeningTopic() +" should be a single partition topic. You may consider try after sometime to allow some time to balance");
 	}
 	private void verifyInstanceUnique() {
-		if(!admin.isGroupIdUnique(groupId, orchestrationTopic))
+		if(!admin.isGroupIdUnique(groupId, getListeningTopic()))
 			throw new TxPipeConfigurationException("'txpipe.core.instanceId' should configured to be unique across cluster. You may consider try after sometime to allow some time to balance");
 	}
-	
-	@PostConstruct
-	private void onStart() {
+	@Override
+	public void afterPropertiesSet() throws Exception {
+		super.afterPropertiesSet();
 		verifyOTPartitions();
 		verifyInstanceUnique();
 		loadMetadata();
 		startContainer();
-		
 		//start after processing all pending commands
 		startPipelines();
 	}
 	
-	
-	@PreDestroy
-	private void destroy() {
+	@Override
+	public void destroy() {
 		abortListener.stop();
-		commandListener.stop();
+		super.destroy();
 		ProcessorRegistry.instance().destroy();
 	}
-	private void startThenPut(CreatePayload def) {
+	private void startThenPut(PipelineDef def) {
 		startPipeline(def, false);
 		doPut(def);
 	}
-	private void startPipeline(CreatePayload def, boolean startIfNotStarted) {
-		def.getComponents().forEach(c -> startComponent(c, def.getPipelineId(), startIfNotStarted));
+	private void startPipeline(PipelineDef def, boolean startIfNotStarted) {
+		def.getComponents().forEach(c -> startComponent(c, def, startIfNotStarted));
 	}
-	private void doPut(CreatePayload def) {
+	private void doPut(PipelineDef def) {
 		if (def != null && StringUtils.hasText(def.getPipelineId()) && !def.getComponents().isEmpty()) {
 			register.put(def.getPipelineId(), def);
 			log.debug("Pipeline definition registered [" + def.getPipelineId()
@@ -179,10 +171,10 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	}
 
 	@Override
-	public CreatePayload get(String pipelineId) {
-		CreatePayload def = register.get(pipelineId);
+	public PipelineDef get(String pipelineId) {
+		PipelineDef def = register.get(pipelineId);
 		if(def != null)
-			return new CreatePayload(def.getPipelineId(), def.getComponents());
+			return new PipelineDef(def.getPipelineId(), def.getComponents());
 		
 		return null;
 	}
@@ -208,7 +200,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		ProcessorRegistry.instance().pause(cmd);
 	}
 	private void doStart(Command c) {
-		CreatePayload def = JsonMapper.deserialize(c.getPayload(), CreatePayload.class);
+		PipelineDef def = JsonMapper.deserialize(c.getPayload(), PipelineDef.class);
 		startThenPut(def);
 	}
 	private void doAbort(Command c) {
@@ -234,27 +226,6 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 		}
 	}
 	
-	@Override
-	public void onMessage(ConsumerRecord<String, String> data, Acknowledgment acknowledgment, Consumer<?, ?> consumer) {
-		try 
-		{
-			Command c = JsonMapper.deserialize(data.value(), Command.class);
-			if(data.topic().equals(abortTopic())) {
-				startupLatch.countDown();
-				doAbort(c);
-			}
-			else
-				switchCommand(c);
-			
-		} catch(Exception e) {
-			log.error("Irrecoverable error at component manager ", e);
-		}
-		finally {
-			acknowledgment.acknowledge();
-		}
-		
-	}
-	
 	@Value("${txpipe.broker.topicPartition:10}")
 	private int partition;
 	@Value("${txpipe.broker.topicReplica:1}")
@@ -263,7 +234,7 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	private boolean isTxnBeanExists(String bean) {
 		return beanFactory.containsBean(bean) && beanFactory.isTypeMatch(bean, TransactionService.class);
 	}
-	private void startComponent(ComponentDef defn, String pipe, boolean startIfNotStarted) {
+	private void startComponent(ComponentDef defn, PipelineDef pipe, boolean startIfNotStarted) {
 		if(isTxnBeanExists(defn.getComponentId())) {
 			startConsumers(defn, pipe, startIfNotStarted);
 		}
@@ -277,26 +248,29 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	 * @param defn
 	 * @param pipe
 	 */
-	private void startConsumers(ComponentDef defn, String pipe, boolean startIfNotStarted) {
-		Subscriber commitSub = (Subscriber) beanFactory.getBean(ServiceManager.COMMIT_PROCESSOR_BEAN_NAME, defn.getCommitQueue());
+	private void startConsumers(ComponentDef defn, PipelineDef pipe, boolean startIfNotStarted) {
+		Processor commitSub = (Processor) beanFactory.getBean(ServiceManager.COMMIT_PROCESSOR_BEAN_NAME, defn.getCommitQueue());
 		commitSub.setCommitLink(defn.getCommitQueueNext());
 		commitSub.setRollbackLink(defn.getRollbackQueuePrev());
 		commitSub.setComponentId(defn.getComponentId());
-		commitSub.setPipelineId(pipe);
+		commitSub.setPipelineId(pipe.getPipelineId());
+		commitSub.addFilter(new PipelineAllowedFilter(pipe.getPipelineId()));
 		if(StringUtils.isEmpty(defn.getRollbackQueuePrev())){
 			((CommitProcessor) commitSub).setInitialComponent();
+			((CommitProcessor) commitSub).setPipelineExpiryMillis(pipe.getExpiryMillis());
 		}
 		final String key = commitSub.getListenerId();
 		if(startIfNotStarted && ProcessorRegistry.instance().isAlreadyPresent(key)) {
 			log.info("Not restarting "+key);
 			return;
 		}
-		Subscriber rollbackSub = null;
+		Processor rollbackSub = null;
 		if(StringUtils.hasText(defn.getRollbackQueue())) {
-			rollbackSub = (Subscriber) beanFactory.getBean(ServiceManager.ROLLBACK_PROCESSOR_BEAN_NAME, defn.getRollbackQueue());
+			rollbackSub = (Processor) beanFactory.getBean(ServiceManager.ROLLBACK_PROCESSOR_BEAN_NAME, defn.getRollbackQueue());
 			rollbackSub.setRollbackLink(defn.getRollbackQueuePrev());
 			rollbackSub.setComponentId(defn.getComponentId());
-			rollbackSub.setPipelineId(pipe);
+			rollbackSub.setPipelineId(pipe.getPipelineId());
+			rollbackSub.addFilter(new PipelineAllowedFilter(pipe.getPipelineId()));
 		}
 		
 		
@@ -331,13 +305,13 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 	}
 	
 	/**
-	 * Load all {@link CreatePayload} saved in Kafka topic as edit log.
+	 * Load all {@link PipelineDef} saved in Kafka topic as edit log.
 	 * @author Sutanu_Dalui
 	 *
 	 */
 	private class AllDefinitionsLoader implements Runnable{
 
-		private final List<CreatePayload> allDefinitions = new ArrayList<>();
+		private final List<PipelineDef> allDefinitions = new ArrayList<>();
 		private String queryTopic;
 		/**
 		 * 
@@ -350,27 +324,25 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 
 		@Override
 		public void run() {
-			KafkaTopicIterator iter = null;
-			try 
+			try (KafkaTopicIterator iter = beanFactory.getBean(KafkaTopicIterator.class, queryTopic))
 			{
-				iter = beanFactory.getBean(KafkaTopicIterator.class, queryTopic);
 				iter.setGroupId(groupId+".DefinitionsLoader");
 				iter.run();
 				allDefinitions.clear();
 				while (iter.hasNext()) {
-					List<CreatePayload> items = iter.next().stream()
+					List<PipelineDef> items = iter.next().stream()
 							.map(s -> {
 									log.debug("Reading meta : " + s);
 									try {
 										Command c = JsonMapper.deserialize(s, Command.class);
 										if(c.isCreate()) {
-											return JsonMapper.deserialize(c.getPayload(), CreatePayload.class);
+											return JsonMapper.deserialize(c.getPayload(), PipelineDef.class);
 										}
 									} catch (UncheckedIOException e) {
 										log.debug(e.getMessage() + " (This could due be a mixup of different version metadata lying in orchestration topic)");
 										log.debug("", e);
 										try {
-											return JsonMapper.deserialize(s, CreatePayload.class);
+											return JsonMapper.deserialize(s, PipelineDef.class);
 										} catch (UncheckedIOException e1) {
 											log.warn(NestedExceptionUtils.buildMessage(
 													"Skipping unrecognized metadata read from orchestration topic. This could due be a mixup of different versioned data ",
@@ -399,13 +371,28 @@ class DefaultComponentManager implements ComponentManager,AcknowledgingConsumerA
 			catch (Exception e) {
 				log.error("Loading of existing definitions on startup failed! ", e);
 			}
-			finally {
-				if (iter != null) {
-					iter.close();
-				}
-			}
 		}
 			
 	}
 
+	@Override
+	public String getListenerId() {
+		return groupId;
+	}
+	@Override
+	protected void processNext(ConsumerRecord<String, String> data) {
+		try 
+		{
+			Command c = JsonMapper.deserialize(data.value(), Command.class);
+			if(data.topic().equals(abortTopic())) {
+				startupLatch.countDown();
+				doAbort(c);
+			}
+			else
+				switchCommand(c);
+			
+		} catch(Exception e) {
+			log.error("Irrecoverable error at component manager ", e);
+		}
+	}
 }

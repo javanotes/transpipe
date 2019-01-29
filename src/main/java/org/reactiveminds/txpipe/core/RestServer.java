@@ -1,9 +1,9 @@
 package org.reactiveminds.txpipe.core;
 
+import static spark.Spark.delete;
 import static spark.Spark.post;
 import static spark.Spark.put;
 import static spark.Spark.stop;
-import static spark.Spark.delete;
 
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -12,6 +12,12 @@ import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 
 import org.reactiveminds.txpipe.core.api.ServiceManager;
+import org.reactiveminds.txpipe.core.dto.CreatePipeline;
+import org.reactiveminds.txpipe.core.dto.HttpResponse;
+import org.reactiveminds.txpipe.core.dto.TransactionResult;
+import org.reactiveminds.txpipe.core.dto.HttpResponse.Code;
+import org.reactiveminds.txpipe.err.DataSerializationException;
+import org.reactiveminds.txpipe.err.DataValidationException;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,55 +26,95 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
+import spark.Request;
+import spark.ResponseTransformer;
+
 class RestServer {
 	private static final Logger log = LoggerFactory.getLogger("RestListener");
 	@Autowired
 	ServiceManager manager;
-	@Value("${txpipe.rest.maxThreads:4}")
+	@Value("${txpipe.rest.listener.maxThreads:4}")
 	private int maxThreads;
-	@Value("${txpipe.rest.minThreads:1}")
+	@Value("${txpipe.rest.listener.minThreads:1}")
 	private int minThreads;
-	@Value("${txpipe.rest.port:8081}")
+	@Value("${txpipe.rest.listener.port:8081}")
 	private int port;
+	
+	private ResponseTransformer transformer;
 	@PostConstruct
 	void init() {
 		spark.Spark.threadPool(maxThreads, minThreads, 60000);
 		spark.Spark.port(port);
+		transformer = o -> JsonMapper.toString(o);
 		mapEndpointUrls();
 	}
 	@PreDestroy
 	void destroy() {
 		stop();
 	}
+	private static String getPathParam(String param, Request req) {
+		try {
+			String arg = req.params(param);
+			Assert.isTrue(StringUtils.hasText(arg), "param '"+param+"' missing in url path");
+			return arg;
+		} catch (IllegalArgumentException e) {
+			throw new DataValidationException(e.getMessage());
+		}
+	}
+	static final String PATH_PARAM_PIPELINE = ":pipeline";
+	static final String PATH_PARAM_COMPONENT = ":component";
+	static final String PATH_CONTEXT = "/txnpipe/";
+	static final String PATH_SEP = "/";
+	
+	static final String URL_RUN = PATH_CONTEXT + PATH_PARAM_PIPELINE + PATH_SEP + "run";
+	static final String URL_INVOKE = PATH_CONTEXT + PATH_PARAM_PIPELINE + PATH_SEP + "invoke";
+	static final String URL_PIPELINE = PATH_CONTEXT + PATH_PARAM_PIPELINE;
+	static final String URL_COMPONENT = URL_PIPELINE + PATH_SEP + PATH_PARAM_COMPONENT;
+	
+	static final String URL_PAUSE_PIPELINE = PATH_CONTEXT + PATH_PARAM_PIPELINE + PATH_SEP + "pause";
+	static final String URL_RESUME_PIPELINE = PATH_CONTEXT + PATH_PARAM_PIPELINE + PATH_SEP + "resume";
+	static final String URL_PAUSE_COMPONENT = PATH_CONTEXT + PATH_PARAM_PIPELINE + PATH_SEP + "pause" + PATH_SEP + PATH_PARAM_COMPONENT;
+	static final String URL_RESUME_COMPONENT = PATH_CONTEXT + PATH_PARAM_PIPELINE + PATH_SEP + "resume" + PATH_SEP + PATH_PARAM_COMPONENT;
+	
+	
+	@SuppressWarnings("deprecation")
 	private void mapEndpointUrls() {
 		/**
 		 * run transaction
 		 */
-		post("/txnpipe/:pipeline/run", (req, res) -> {
+		post(URL_RUN, (req, res) -> {
 			try {
-				String componentId = req.params(":pipeline");
+				String componentId = getPathParam(PATH_PARAM_PIPELINE, req);
 				String request = req.body();
-				String id = manager.invokePipeline(request, componentId);
+				TransactionResult id = manager.invokePipeline(request, componentId);
 				res.status(202);
-				return id;
-			} catch (IllegalArgumentException e) {
+				return new HttpResponse(Code.OK, "Transaction Result", id);
+				
+			} catch (DataValidationException e) {
 				log.error("Request error> "+e.getMessage());
 				log.debug("", e);
 				res.status(400);
-				return e.getMessage();
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Validation Error");
+				h.setDetail(e.getMessage());
+				return h;
 			}
 			catch (Exception e) {
 				log.error("Unexpected error: ", e);
 				res.status(503);
-				return "Try later. If issue persists, contact support";
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Try later. If issue persists, contact support");
+				return h;
 			}
-		});
+		}, transformer);
 		/**
 		 * Run transaction and wait for result
 		 */
-		post("/txnpipe/:pipeline/invoke", (req, res) -> {
+		post(URL_INVOKE, (req, res) -> {
 			try {
-				String componentId = req.params(":pipeline");
+				String componentId = getPathParam(PATH_PARAM_PIPELINE, req);
 				String request = req.body();
 				long wait = 10;
 				try {
@@ -76,157 +122,248 @@ class RestServer {
 				} catch (NumberFormatException e) {
 					wait = 10;
 				}
-				String id = manager.executePipeline(request, componentId, wait, TimeUnit.SECONDS);
+				TransactionResult id = manager.executePipeline(request, componentId, wait, TimeUnit.SECONDS);
 				res.status(200);
-				return id;
-			} catch (IllegalArgumentException e) {
+				return new HttpResponse(Code.OK, "Transaction Result", id);
+				
+			} catch (DataValidationException e) {
 				log.error("Request error> "+e.getMessage());
 				log.debug("", e);
 				res.status(400);
-				return e.getMessage();
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Validation Error");
+				h.setDetail(e.getMessage());
+				return h;
 			}
 			catch (TimeoutException e) {
 				log.error(e.getMessage());
 				log.debug("", e);
 				res.status(408);
-				return "Request timed out";
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Request Timed Out");
+				return h;
 			}
 			catch (Exception e) {
 				log.error("Unexpected error: ", e);
 				res.status(503);
-				return "Try later. If issue persists, contact support";
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Try later. If issue persists, contact support");
+				return h;
 			}
-		});
+		}, transformer);
+		/**
+		 * @deprecated
+		 * configure new transaction
+		 */
+		put(URL_PIPELINE, (req, res) -> {
+			try 
+			{
+				String[] components = JsonMapper.deserialize(req.body(), String[].class);
+				manager.registerPipeline(getPathParam(PATH_PARAM_PIPELINE, req), components);
+				log.warn("Using deprecated api to create pipeline");
+				res.status(201);
+				return new HttpResponse(Code.WARN, "Create Pipeline", "Using deprecated API");
+				
+			} catch (DataSerializationException | DataValidationException e) {
+				log.error("Request error> "+e.getMessage());
+				log.debug("", e);
+				res.status(400);
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Validation Error");
+				h.setDetail(e.getMessage());
+				return h;
+			}
+			catch (Exception e) {
+				log.error("Unexpected error: ", e);
+				res.status(503);
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Try later. If issue persists, contact support");
+				return h;
+			}
+		}, transformer);
+		
 		/**
 		 * configure new transaction
 		 */
-		put("/txnpipe/:pipeline", (req, res) -> {
-			try {
-				String[] components = JsonMapper.deserialize(req.body(), String[].class);
-				Assert.isTrue(StringUtils.hasText(req.params(":pipeline")), "pipeline id not specified in url path /txnpipe/:pipeline");
-				manager.registerPipeline(req.params(":pipeline"), components);
+		post(URL_PIPELINE, (req, res) -> {
+			try 
+			{
+				CreatePipeline create = JsonMapper.deserialize(req.body(), CreatePipeline.class);
+				create.setName(getPathParam(PATH_PARAM_PIPELINE, req));
+				manager.registerPipeline(create);
+				
 				res.status(201);
-				return "OK";
-			} catch (IllegalArgumentException e) {
+				return new HttpResponse(Code.OK, "Create Pipeline");
+				
+			} catch (DataSerializationException | DataValidationException e) {
 				log.error("Request error> "+e.getMessage());
 				log.debug("", e);
 				res.status(400);
-				return e.getMessage();
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Validation Error");
+				h.setDetail(e.getMessage());
+				return h;
 			}
 			catch (Exception e) {
 				log.error("Unexpected error: ", e);
 				res.status(503);
-				return "Try later. If issue persists, contact support";
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Try later. If issue persists, contact support");
+				return h;
 			}
-		});
-		post("/txnpipe/:pipeline/pause", (req, res) -> {
+		}, transformer);
+		
+		post(URL_PAUSE_PIPELINE, (req, res) -> {
 			try {
-				Assert.isTrue(StringUtils.hasText(req.params(":pipeline")), "pipeline id not specified in url path /txnpipe/:pipeline/pause");
-				manager.pause(req.params(":pipeline"), null);
+				manager.pause(getPathParam(PATH_PARAM_PIPELINE, req), null);
 				res.status(201);
-				return "OK";
-			} catch (IllegalArgumentException e) {
+				return new HttpResponse(Code.OK, "Pause requested");
+			} catch (DataValidationException e) {
 				log.error("Request error> "+e.getMessage());
 				log.debug("", e);
 				res.status(400);
-				return e.getMessage();
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Validation Error");
+				h.setDetail(e.getMessage());
+				return h;
 			}
 			catch (Exception e) {
 				log.error("Unexpected error: ", e);
 				res.status(503);
-				return "Try later. If issue persists, contact support";
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Try later. If issue persists, contact support");
+				return h;
 			}
-		});
-		post("/txnpipe/:pipeline/pause/:txn", (req, res) -> {
+		}, transformer);
+		post(URL_PAUSE_COMPONENT, (req, res) -> {
 			try {
-				Assert.isTrue(StringUtils.hasText(req.params(":pipeline")), "pipeline id not specified in url path /txnpipe/:pipeline/pause");
-				manager.pause(req.params(":pipeline"), req.params(":txn"));
+				manager.pause(getPathParam(PATH_PARAM_PIPELINE, req), getPathParam(PATH_PARAM_COMPONENT, req));
 				res.status(201);
-				return "OK";
-			} catch (IllegalArgumentException e) {
+				return new HttpResponse(Code.OK, "Pause requested");
+			} catch (DataValidationException e) {
 				log.error("Request error> "+e.getMessage());
 				log.debug("", e);
 				res.status(400);
-				return e.getMessage();
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Validation Error");
+				h.setDetail(e.getMessage());
+				return h;
 			}
 			catch (Exception e) {
 				log.error("Unexpected error: ", e);
 				res.status(503);
-				return "Try later. If issue persists, contact support";
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Try later. If issue persists, contact support");
+				return h;
 			}
-		});
-		post("/txnpipe/:pipeline/resume", (req, res) -> {
+		}, transformer);
+		post(URL_RESUME_PIPELINE, (req, res) -> {
 			try {
-				Assert.isTrue(StringUtils.hasText(req.params(":pipeline")), "pipeline id not specified in url path /txnpipe/:pipeline/resume");
-				manager.resume(req.params(":pipeline"), null);
+				manager.resume(getPathParam(PATH_PARAM_PIPELINE, req), null);
 				res.status(201);
-				return "OK";
-			} catch (IllegalArgumentException e) {
+				return new HttpResponse(Code.OK, "Resume requested");
+			} catch (DataValidationException e) {
 				log.error("Request error> "+e.getMessage());
 				log.debug("", e);
 				res.status(400);
-				return e.getMessage();
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Validation Error");
+				h.setDetail(e.getMessage());
+				return h;
 			}
 			catch (Exception e) {
 				log.error("Unexpected error: ", e);
 				res.status(503);
-				return "Try later. If issue persists, contact support";
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Try later. If issue persists, contact support");
+				return h;
 			}
-		});
-		post("/txnpipe/:pipeline/resume/:txn", (req, res) -> {
+		}, transformer);
+		post(URL_RESUME_COMPONENT, (req, res) -> {
 			try {
-				Assert.isTrue(StringUtils.hasText(req.params(":pipeline")), "pipeline id not specified in url path /txnpipe/:pipeline/resume");
-				manager.resume(req.params(":pipeline"), req.params(":txn"));
+				manager.resume(getPathParam(PATH_PARAM_PIPELINE, req), getPathParam(PATH_PARAM_COMPONENT, req));
 				res.status(201);
-				return "OK";
-			} catch (IllegalArgumentException e) {
+				return new HttpResponse(Code.OK, "Resume requested");
+			} catch (DataValidationException e) {
 				log.error("Request error> "+e.getMessage());
 				log.debug("", e);
 				res.status(400);
-				return e.getMessage();
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Validation Error");
+				h.setDetail(e.getMessage());
+				return h;
 			}
 			catch (Exception e) {
 				log.error("Unexpected error: ", e);
 				res.status(503);
-				return "Try later. If issue persists, contact support";
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Try later. If issue persists, contact support");
+				return h;
 			}
-		});
-		delete("/txnpipe/:pipeline", (req, res) -> {
+		}, transformer);
+		delete(URL_PIPELINE, (req, res) -> {
 			try {
-				Assert.isTrue(StringUtils.hasText(req.params(":pipeline")), "pipeline id not specified in url path /txnpipe/:pipeline");
-				manager.stop(req.params(":pipeline"), null);
+				manager.stop(getPathParam(PATH_PARAM_PIPELINE, req), null);
 				res.status(201);
-				return "OK";
-			} catch (IllegalArgumentException e) {
+				return new HttpResponse(Code.OK, "Stop requested");
+			} catch (DataValidationException e) {
 				log.error("Request error> "+e.getMessage());
 				log.debug("", e);
 				res.status(400);
-				return e.getMessage();
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Validation Error");
+				h.setDetail(e.getMessage());
+				return h;
 			}
 			catch (Exception e) {
 				log.error("Unexpected error: ", e);
 				res.status(503);
-				return "Try later. If issue persists, contact support";
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Try later. If issue persists, contact support");
+				return h;
 			}
-		});
-		delete("/txnpipe/:pipeline/:txn", (req, res) -> {
+		}, transformer);
+		delete(URL_COMPONENT, (req, res) -> {
 			try {
-				Assert.isTrue(StringUtils.hasText(req.params(":pipeline")), "pipeline id not specified in url path /txnpipe/:pipeline/:txn");
-				manager.stop(req.params(":pipeline"), req.params(":txn"));
+				manager.stop(getPathParam(PATH_PARAM_PIPELINE, req), getPathParam(PATH_PARAM_COMPONENT, req));
 				res.status(201);
-				return "OK";
-			} catch (IllegalArgumentException e) {
+				return new HttpResponse(Code.OK, "Stop requested");
+			} catch (DataValidationException e) {
 				log.error("Request error> "+e.getMessage());
 				log.debug("", e);
 				res.status(400);
-				return e.getMessage();
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Validation Error");
+				h.setDetail(e.getMessage());
+				return h;
 			}
 			catch (Exception e) {
 				log.error("Unexpected error: ", e);
 				res.status(503);
-				return "Try later. If issue persists, contact support";
+				HttpResponse h = new HttpResponse();
+				h.setCode(Code.ERR);
+				h.setInfo("Try later. If issue persists, contact support");
+				return h;
 			}
-		});
+		}, transformer);
 	}
 
 }

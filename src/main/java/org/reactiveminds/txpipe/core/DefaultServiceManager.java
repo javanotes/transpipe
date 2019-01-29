@@ -1,21 +1,22 @@
 package org.reactiveminds.txpipe.core;
 
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
-import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
 import org.reactiveminds.txpipe.core.api.LocalMapStore;
 import org.reactiveminds.txpipe.core.api.Publisher;
 import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.dto.Command;
 import org.reactiveminds.txpipe.core.dto.Command.Code;
-import org.reactiveminds.txpipe.core.dto.CreatePayload;
+import org.reactiveminds.txpipe.core.dto.CreatePipeline;
 import org.reactiveminds.txpipe.core.dto.PausePayload;
+import org.reactiveminds.txpipe.core.dto.PipelineDef;
 import org.reactiveminds.txpipe.core.dto.ResumePayload;
 import org.reactiveminds.txpipe.core.dto.StopPayload;
+import org.reactiveminds.txpipe.core.dto.TransactionResult;
+import org.reactiveminds.txpipe.err.DataValidationException;
+import org.reactiveminds.txpipe.err.TxPipeRuntimeException;
 import org.reactiveminds.txpipe.utils.JsonMapper;
-import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,41 +37,33 @@ class DefaultServiceManager implements ServiceManager{
 	private LocalMapStoreFactory mapstoreFactory;
 	
 	private String getDestination(String pipelineId) {
-		if(!registry.contains(pipelineId))
-			throw new IllegalArgumentException("Transaction pipeline '" +pipelineId+"' is not registered. If request has been already sent, please try after sometime");
-		String queue = registry.getSource(pipelineId);
-		Assert.hasText(queue, "Trigger topic not set for pipeline - " + pipelineId);
-		
-		return queue;
+		try 
+		{
+			if(!registry.contains(pipelineId))
+				throw new IllegalArgumentException("Transaction pipeline '" +pipelineId+"' is not registered. If request has been already sent, please try after sometime");
+			String queue = registry.getSource(pipelineId);
+			Assert.hasText(queue, "Trigger topic not set for pipeline - " + pipelineId);
+			
+			return queue;
+		} catch (IllegalArgumentException e) {
+			throw new DataValidationException(e.getMessage());
+		}
 	}
 	/**
 	 * 
 	 */
 	@Override
-	public String invokePipeline(String requestJson, String pipelineId) throws IllegalArgumentException{
+	public TransactionResult invokePipeline(String requestJson, String pipelineId) throws IllegalArgumentException{
 		String queue = getDestination(pipelineId);
-		return publisher.publish(requestJson, queue, pipelineId);
+		String id = publisher.publish(requestJson, queue, pipelineId);
+		return new TransactionResult(id, TransactionResult.State.SUBMIT);
 	}
 		
 	@Override
-	public String executePipeline(String requestJson, String pipelineId, long maxAwait, TimeUnit unit)
-			throws TimeoutException {
+	public TransactionResult executePipeline(String requestJson, String pipelineId, long maxAwait, TimeUnit unit){
 		String queue = getDestination(pipelineId);
 		TransactionResult result = publisher.execute(requestJson, queue, pipelineId, maxAwait, unit);
-		if(result == TransactionResult.TIMEOUT)
-			throw new TimeoutException();
-		return JsonMapper.makeResponse(result);
-	}
-	@Override
-	public void registerPipeline(String pipeline, String... components) {
-		CreatePayload request = new CreatePayload();
-		request.setPipelineId(pipeline);
-		for(String component : components) {
-			request.addComponent(component);
-		}
-		Command c = new Command(Code.START);
-		c.setPayload(JsonMapper.serialize(request));
-		kafkaTemplate.send(orchestrationTopic, JsonMapper.serialize(c));
+		return result;
 	}
 	
 	@Override
@@ -107,7 +100,30 @@ class DefaultServiceManager implements ServiceManager{
 			mapstore.start();
 			return mapstore;
 		} catch (Exception e) {
-			throw new BeanCreationException("Unable to initialize map store - "+name, e);
+			throw new TxPipeRuntimeException("Unable to initialize map store - "+name, e);
 		}
+	}
+	@Override
+	public void registerPipeline(CreatePipeline create) {
+		PipelineDef request = new PipelineDef();
+		request.setPipelineId(create.getName());
+		request.setExpiryMillis(create.getExpiryUnit().toMillis(create.getExpiry()));
+		for(String component : create.getComponents()) {
+			request.addComponent(component);
+		}
+		Command c = new Command(Code.START);
+		c.setPayload(JsonMapper.serialize(request));
+		kafkaTemplate.send(orchestrationTopic, JsonMapper.serialize(c));
+	}
+	@Override
+	public void registerPipeline(String pipeline, String... components) {
+		PipelineDef request = new PipelineDef();
+		request.setPipelineId(pipeline);
+		for(String component : components) {
+			request.addComponent(component);
+		}
+		Command c = new Command(Code.START);
+		c.setPayload(JsonMapper.serialize(request));
+		kafkaTemplate.send(orchestrationTopic, JsonMapper.serialize(c));
 	}
 }

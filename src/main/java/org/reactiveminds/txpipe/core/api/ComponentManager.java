@@ -1,6 +1,6 @@
 package org.reactiveminds.txpipe.core.api;
 
-import org.reactiveminds.txpipe.core.dto.CreatePayload;
+import org.reactiveminds.txpipe.core.dto.PipelineDef;
 
 public interface ComponentManager {
 	String TXPIPE_REPLY_TOPIC = "__txpipe_reply";
@@ -17,7 +17,7 @@ public interface ComponentManager {
 	 * @param componentId
 	 * @return
 	 */
-	CreatePayload get(String pipelineId);
+	PipelineDef get(String pipelineId);
 	/**
 	 * Get the source queue for triggering the pipeline
 	 * @param componentId

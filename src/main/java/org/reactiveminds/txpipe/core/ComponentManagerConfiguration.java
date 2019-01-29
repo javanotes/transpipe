@@ -1,10 +1,11 @@
 package org.reactiveminds.txpipe.core;
 
 import org.reactiveminds.txpipe.broker.KafkaConfiguration;
+import org.reactiveminds.txpipe.broker.Subscriber;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
 import org.reactiveminds.txpipe.core.api.ServiceManager;
-import org.reactiveminds.txpipe.core.api.Subscriber;
 import org.reactiveminds.txpipe.core.api.TransactionMarker;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,13 +17,15 @@ import org.springframework.context.annotation.Scope;
 @Import(KafkaConfiguration.class)
 public class ComponentManagerConfiguration {
 
+	@Value("${txpipe.core.orchestrationTopic:managerTopic}") 
+	private String orchestrationTopic;
 	@Bean
 	TransactionMarker transactionMarker() {
 		return new DefaultTransactionMarker();
 	}
 	@Bean
 	public ComponentManager componentRegistry() {
-		return new DefaultComponentManager();
+		return new DefaultComponentManager(orchestrationTopic);
 	}
 
 	@Bean(ServiceManager.COMMIT_PROCESSOR_BEAN_NAME)

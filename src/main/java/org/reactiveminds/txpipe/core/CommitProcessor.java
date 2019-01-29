@@ -28,10 +28,7 @@ class CommitProcessor extends RollbackProcessor {
 		return "CommitProcessor [commitLink=" + commitLink + ", listeningTopic=" + getListeningTopic() + ", componentId="
 				+ componentId + ", rollbackLink=" + getRollbackLink() + "]";
 	}
-	@Override
-	public void run() {
-		super.run();
-	}
+	
 	private void propagate(Event event, String response) {
 		Event next = event.copy();
 		next.setPayload(codec.encode(response));
@@ -42,7 +39,7 @@ class CommitProcessor extends RollbackProcessor {
 	@Override
 	public void consume(Event event) {
 		if(initialStep) {
-			txnMarker.begin(event.getTxnId(), getTxnExpiryDuration(), TimeUnit.MILLISECONDS);
+			txnMarker.begin(event.getTxnId(), expiryMillis, TimeUnit.MILLISECONDS);
 		}
 		try 
 		{
@@ -70,5 +67,8 @@ class CommitProcessor extends RollbackProcessor {
 	public void setInitialComponent() {
 		initialStep = true;
 	}
-	
+	private long expiryMillis;
+	public void setPipelineExpiryMillis(long expiry) {
+		expiryMillis = expiry;
+	}
 }

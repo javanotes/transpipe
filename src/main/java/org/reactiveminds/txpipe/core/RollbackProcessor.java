@@ -1,12 +1,11 @@
 package org.reactiveminds.txpipe.core;
 
-import org.reactiveminds.txpipe.broker.KafkaSubscriber;
 import org.reactiveminds.txpipe.core.api.Publisher;
 import org.reactiveminds.txpipe.core.dto.Event;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 
-class RollbackProcessor extends KafkaSubscriber {
+class RollbackProcessor extends AbstractProcessor {
 	
 	@Override
 	public String toString() {

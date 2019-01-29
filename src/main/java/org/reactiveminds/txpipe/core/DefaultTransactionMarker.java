@@ -7,12 +7,12 @@ import java.util.concurrent.TimeUnit;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 
-import org.reactiveminds.txpipe.api.TransactionResult;
 import org.reactiveminds.txpipe.broker.NotifyingKafkaTemplate;
 import org.reactiveminds.txpipe.broker.ResponsiveKafkaTemplate;
 import org.reactiveminds.txpipe.core.api.ComponentManager;
 import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.api.TransactionMarker;
+import org.reactiveminds.txpipe.core.dto.TransactionResult;
 import org.reactiveminds.txpipe.core.dto.TransactionState;
 import org.reactiveminds.txpipe.spi.EventRecorder;
 import org.reactiveminds.txpipe.utils.JsonMapper;
@@ -73,13 +73,18 @@ public class DefaultTransactionMarker extends ExpirationListener<String> impleme
 	}
 	@Override
 	public void end(String txnId, boolean commit) {
-		log.info("End : "+txnId+", commit? "+commit);
+		log.info("End : " + txnId + ", commit? " + commit);
 		if (abortOnTimeout) {
-			kafkaTemplate.send(ComponentManager.TXPIPE_NOTIF_TOPIC, txnId, commit ? TransactionResult.COMMIT.name() : TransactionResult.ROLLBACK.name());//this would remove the entry added in begin()
+			kafkaTemplate.send(ComponentManager.TXPIPE_NOTIF_TOPIC, txnId,
+					commit ? TransactionResult.State.COMMIT.name() : TransactionResult.State.ROLLBACK.name());// this would remove the entry added in begin()
 		}
-		kafkaTemplate.send(ComponentManager.TXPIPE_REPLY_TOPIC, txnId, commit ? TransactionResult.COMMIT.name() : TransactionResult.ROLLBACK.name());
+		kafkaTemplate.send(ComponentManager.TXPIPE_REPLY_TOPIC, txnId, makeReplyString(txnId, commit));
 	}
 
+	private static String makeReplyString(String txnId, boolean isCommit) {
+		return isCommit ? JsonMapper.makeResponse(new TransactionResult(txnId, TransactionResult.State.COMMIT))
+				: JsonMapper.makeResponse(new TransactionResult(txnId, TransactionResult.State.ROLLBACK));
+	}
 	@Override
 	protected void onExpiry(String key) {
 		log.warn("Aborting txn on expiration : " + key);

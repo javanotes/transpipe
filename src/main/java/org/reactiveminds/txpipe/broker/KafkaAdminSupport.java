@@ -109,15 +109,10 @@ class KafkaAdminSupport implements BrokerAdmin {
 
 	@Override
 	public synchronized long getTotalLag(String topic, String group) {
-		try {
+		try (KafkaTopicIterator iter = beans.getBean(KafkaTopicIterator.class, topic)){
 
-			KafkaTopicIterator iter = beans.getBean(KafkaTopicIterator.class, topic);
 			iter.setGroupId(groupId+".AdminSupport");
-			try {
-				iter.run();
-			} finally {
-				iter.close();
-			}
+			iter.run();
 			long end = iter.getEndOffsets().entrySet().stream().mapToLong(e -> e.getValue()).sum();
 			long current = admin.listConsumerGroupOffsets(group).partitionsToOffsetAndMetadata().get().entrySet()
 					.stream().filter(e -> e.getKey().topic().equals(topic)).mapToLong(e -> e.getValue().offset()).sum();

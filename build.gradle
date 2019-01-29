@@ -33,7 +33,7 @@ publishing {
         mavenJava(MavenPublication) {
         	groupId 'org.reactiveminds.txpipe'
 			artifactId 'txpipe-sdk'
-			version '0.0.1'
+			version '0.1.0'
 			
             from components.java
             artifact sourceJar
