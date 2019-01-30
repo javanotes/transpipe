@@ -39,7 +39,7 @@ class CommitProcessor extends RollbackProcessor {
 	@Override
 	public void consume(Event event) {
 		if(initialStep) {
-			txnMarker.begin(event.getTxnId(), expiryMillis, TimeUnit.MILLISECONDS);
+			txnMarker.begin(event, expiryMillis, TimeUnit.MILLISECONDS);
 		}
 		try 
 		{

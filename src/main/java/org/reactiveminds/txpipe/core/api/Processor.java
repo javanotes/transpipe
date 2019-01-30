@@ -1,6 +1,5 @@
 package org.reactiveminds.txpipe.core.api;
 
-import org.reactiveminds.txpipe.broker.Subscriber;
 import org.reactiveminds.txpipe.core.dto.Event;
 
 public interface Processor extends Subscriber{

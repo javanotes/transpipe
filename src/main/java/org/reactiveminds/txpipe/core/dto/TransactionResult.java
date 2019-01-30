@@ -9,7 +9,7 @@ public class TransactionResult{
 		this.status = status;
 	}
 	public static enum State{
-		COMMIT,ROLLBACK,TIMEOUT,ERROR,SUBMIT
+		COMMIT,ROLLBACK,TIMEOUT,ABORT,SUBMIT, UNDEF
 	}
 	//not adding any other detail of individual components
 	//that should be queried from event logs

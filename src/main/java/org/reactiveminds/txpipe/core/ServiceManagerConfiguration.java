@@ -17,9 +17,4 @@ public class ServiceManagerConfiguration {
 		return new DefaultServiceManager();
 	}
 	
-	@Bean
-	LocalMapStoreFactory mapstoreFactory() {
-		return new LocalMapStoreFactory();
-	}
-	
 }

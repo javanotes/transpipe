@@ -5,8 +5,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -73,13 +71,30 @@ class DefaultComponentManager extends KafkaSubscriber implements ComponentManage
 	
 	@Value("${txpipe.core.instanceId}")
 	private String groupId;
-	private CountDownLatch startupLatch;
+	
 	private String abortTopic() {
 		return getListeningTopic()+ServiceManager.ABORT_TOPIC_SUFFIX;
 	}
+	
 	private void startAbortListener() {
-		int abortLag = (int) admin.getTotalLag(abortTopic(), groupId);
-		startupLatch = new CountDownLatch(abortLag);
+		
+		//read all pending abort messages first (if any)
+		try(KafkaTopicIterator iter = beanFactory.getBean(KafkaTopicIterator.class, abortTopic())){
+			iter.offsetResetLatest();
+			iter.setGroupId(groupId);
+			iter.run();
+			
+			while(iter.hasNext()) {
+				List<String> nextRecord = iter.next();
+				for(String each : nextRecord)
+					processNext(each, abortTopic());
+			}
+		}
+		catch(Exception e) {
+			throw new TxPipeIntitializationException("Error while reading abort topic on startup", e);
+		}
+		
+		//now start the long running listener
 		abortListener = beanFactory.getBean(PartitionAwareListenerContainer.class, abortTopic(), groupId, 1, new ErrorHandler() {
 			
 			@Override
@@ -89,18 +104,9 @@ class DefaultComponentManager extends KafkaSubscriber implements ComponentManage
 		});
 		abortListener.setupMessageListener(this);
 		abortListener.start();
-		try {
-			boolean b = startupLatch.await(readAbortWait, TimeUnit.SECONDS);
-			if(!b)
-				throw new TxPipeIntitializationException(
-						"Abort listener did not complete in time. This can cause aborted transactions to fire unexpectedly. Restart node until this error goes away");
-			
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		}
+		
 	}
 	private void startContainer() {
-		startAbortListener();
 		log.info("Joining cluster with instanceId '"+groupId+"' ..");
 		run();
 		if (isPartitionUnassigned())
@@ -139,6 +145,7 @@ class DefaultComponentManager extends KafkaSubscriber implements ComponentManage
 		verifyOTPartitions();
 		verifyInstanceUnique();
 		loadMetadata();
+		startAbortListener();
 		startContainer();
 		//start after processing all pending commands
 		startPipelines();
@@ -379,13 +386,11 @@ class DefaultComponentManager extends KafkaSubscriber implements ComponentManage
 	public String getListenerId() {
 		return groupId;
 	}
-	@Override
-	protected void processNext(ConsumerRecord<String, String> data) {
+	private void processNext(String data, String topic) {
 		try 
 		{
-			Command c = JsonMapper.deserialize(data.value(), Command.class);
-			if(data.topic().equals(abortTopic())) {
-				startupLatch.countDown();
+			Command c = JsonMapper.deserialize(data, Command.class);
+			if(topic.equals(abortTopic())) {
 				doAbort(c);
 			}
 			else
@@ -394,5 +399,9 @@ class DefaultComponentManager extends KafkaSubscriber implements ComponentManage
 		} catch(Exception e) {
 			log.error("Irrecoverable error at component manager ", e);
 		}
+	}
+	@Override
+	protected void processNext(ConsumerRecord<String, String> data) {
+		processNext(data.value(), data.topic());
 	}
 }

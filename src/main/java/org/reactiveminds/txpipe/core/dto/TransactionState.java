@@ -1,5 +1,7 @@
 package org.reactiveminds.txpipe.core.dto;
 
+import org.reactiveminds.txpipe.core.dto.TransactionResult.State;
+
 public class TransactionState {
 	public TransactionState() {
 	}
@@ -28,14 +30,6 @@ public class TransactionState {
 		this.pipeline = pipeline;
 	}
 
-	public boolean isCommit() {
-		return commit;
-	}
-
-	public void setCommit(boolean commit) {
-		this.commit = commit;
-	}
-
 	public long getTimestamp() {
 		return timestamp;
 	}
@@ -52,10 +46,18 @@ public class TransactionState {
 		this.sequence = sequence;
 	}
 
+	public State getState() {
+		return state;
+	}
+
+	public void setState(State state) {
+		this.state = state;
+	}
+
 	private String transactionId;
 	private String component;
 	private String pipeline;
-	private boolean commit;
+	private State state;
 	private long timestamp;
 	private short sequence;
 }

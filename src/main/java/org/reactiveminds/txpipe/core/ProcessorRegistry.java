@@ -4,8 +4,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.reactiveminds.txpipe.broker.Subscriber;
 import org.reactiveminds.txpipe.broker.ConsumerRecordFilter.TransactionAbortedFilter;
+import org.reactiveminds.txpipe.core.api.Subscriber;
 import org.reactiveminds.txpipe.core.dto.Event;
 import org.reactiveminds.txpipe.core.dto.PausePayload;
 import org.reactiveminds.txpipe.core.dto.ResumePayload;
@@ -30,11 +30,11 @@ class ProcessorRegistry {
 	 * 
 	 * @param commit
 	 * @param pipe
-	 * @param txnName
+	 * @param comp
 	 * @return
 	 */
-	private static boolean isSubscriberOfTransaction(Subscriber commit, String pipe, String txnName) {
-		return isSubscriberOfPipeline(commit, pipe) && commit.getListenerId().endsWith(txnName);
+	private static boolean isSubscriberOfComponent(Subscriber commit, String pipe, String comp) {
+		return isSubscriberOfPipeline(commit, pipe) && commit.getListenerId().endsWith(comp);
 	}
 	public static ProcessorRegistry instance() {
 		return Loader.me;
@@ -101,24 +101,24 @@ class ProcessorRegistry {
 			.forEach(e -> e.getValue().stop());
 		}
 	}
-	public void pause(String pipeline, String txn) {
+	public void pause(String pipeline, String component) {
 		synchronized (processorRegistry) {
 			processorRegistry.entrySet().stream()
-			.filter(e -> isSubscriberOfTransaction(e.getValue().commit, pipeline, txn))
+			.filter(e -> isSubscriberOfComponent(e.getValue().commit, pipeline, component))
 			.forEach(e -> e.getValue().commit.pause());
 		}
 	}
-	public void resume(String pipeline, String txn) {
+	public void resume(String pipeline, String component) {
 		synchronized (processorRegistry) {
 			processorRegistry.entrySet().stream()
-			.filter(e -> isSubscriberOfTransaction(e.getValue().commit, pipeline, txn))
+			.filter(e -> isSubscriberOfComponent(e.getValue().commit, pipeline, component))
 			.forEach(e -> e.getValue().commit.resume());
 		}
 	}
-	public void stop(String pipeline, String txn) {
+	public void stop(String pipeline, String component) {
 		synchronized (processorRegistry) {
 			processorRegistry.entrySet().stream()
-			.filter(e -> isSubscriberOfTransaction(e.getValue().commit, pipeline, txn))
+			.filter(e -> isSubscriberOfComponent(e.getValue().commit, pipeline, component))
 			.forEach(e -> e.getValue().stop());
 		}
 	}
@@ -182,9 +182,9 @@ class ProcessorRegistry {
 			this.rollback = rollback;
 		}
 		public void abort(String txnId) {
+			//TODO : [TECHDEBT] filters can keep on increasing unnecessarily 
 			commit.addFilter(new TransactionAbortedFilter(txnId));
 			if(rollback != null) {
-				log.warn("["+rollback.getListenerId()+"] Forcing rollback for transaction : "+txnId);
 				Event e = new Event();
 				e.setTxnId(txnId);
 				e.setDestination(rollback.getListeningTopic());

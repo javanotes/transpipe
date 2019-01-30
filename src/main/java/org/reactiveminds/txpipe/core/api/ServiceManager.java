@@ -5,6 +5,7 @@ import java.util.concurrent.TimeoutException;
 
 import org.reactiveminds.txpipe.core.dto.CreatePipeline;
 import org.reactiveminds.txpipe.core.dto.TransactionResult;
+import org.reactiveminds.txpipe.store.LocalMapStore;
 
 public interface ServiceManager {
 

@@ -25,31 +25,41 @@ public class AppConfiguration {
 		return new CreditCheckingService();
 	}*/
 	
-	/*@Bean
+	@Bean
 	TransactionService bookTicket() {
 		return new AbstractTransactionService() {
-			
+
 			@Override
 			public void rollback(String txnId) {
-				log.warn(txnId+" -- ticket booking rolled back --");
+				log.warn(txnId + " -- ticket booking rolled back --");
 			}
-			
+
+			@Override
+			public void abort(String txnId) {
+				log.warn(txnId + " --  ticket booking aborted --");
+			}
+
 			@Override
 			public String commit(String txnId, String payload) throws CommitFailedException {
-				log.info(txnId+" -- ticket booking success --");
+				log.info(txnId + " -- ticket booking success --");
 				return "";
 			}
 		};
-	}*/
+	}
 	
 	
-	@Bean
+	/*@Bean
 	TransactionService notifyUser() {
 		return new AbstractTransactionService() {
 			
 			@Override
 			public void rollback(String txnId) {
 				log.warn(txnId+" -- user notify rolled back --");
+			}
+			
+			@Override
+			public void abort(String txnId) {
+				log.warn(txnId + " --   user notify aborted --");
 			}
 			
 			@Override
@@ -75,5 +85,5 @@ public class AppConfiguration {
 				throw new CommitFailedException("failed to notify", new RuntimeException());
 			}
 		};
-	}
+	}*/
 }

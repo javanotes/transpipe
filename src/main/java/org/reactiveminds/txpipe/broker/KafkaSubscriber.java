@@ -7,6 +7,7 @@ import java.util.function.Predicate;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.reactiveminds.txpipe.api.CommitFailedException;
 import org.reactiveminds.txpipe.broker.ConsumerRecordFilter.RecordExpiredFilter;
+import org.reactiveminds.txpipe.core.api.Subscriber;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
@@ -81,7 +82,11 @@ public abstract class KafkaSubscriber implements Subscriber,InitializingBean,Dis
 	protected ErrorHandler errorHandler() {
 		return new ContainerErrHandler();
 	}
-	private void start() {
+	/**
+	 * The method to actually start the listener container. This will be invoked
+	 * from {@link Runnable#run()}, and can be overridden by subclasses to decorate the start.
+	 */
+	protected void doStart() {
 		container = factory.getBean(PartitionAwareListenerContainer.class, getListeningTopic(),
 				getListenerId(), concurreny, errorHandler());
 		container.setupMessageListener(this);
@@ -102,7 +107,7 @@ public abstract class KafkaSubscriber implements Subscriber,InitializingBean,Dis
 		if (!started) {
 			synchronized (this) {
 				if (!started) {
-					start();
+					doStart();
 				}
 			} 
 		}

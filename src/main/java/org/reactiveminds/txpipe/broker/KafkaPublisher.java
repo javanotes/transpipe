@@ -93,7 +93,7 @@ class KafkaPublisher implements Publisher {
 		Event event = makeEvent(payload, queue);
 		event.setPipeline(pipeline);
 		TransactionResult r = new TransactionResult();
-		r.setStatus(TransactionResult.State.ERROR);
+		r.setStatus(TransactionResult.State.UNDEF);
 		r.setTxnId(event.getTxnId());
 		try {
 			String res = sendAndReceive(event, unit, wait);

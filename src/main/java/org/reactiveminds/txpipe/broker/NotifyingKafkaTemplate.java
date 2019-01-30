@@ -2,17 +2,20 @@ package org.reactiveminds.txpipe.broker;
 
 import java.util.concurrent.TimeUnit;
 
+import org.reactiveminds.txpipe.utils.ONotification;
+import org.reactiveminds.txpipe.utils.ONotification.Type;
+import org.reactiveminds.txpipe.utils.ONotificationListener;
+import org.reactiveminds.txpipe.utils.ONotificationManager;
 import org.reactiveminds.txpipe.utils.SelfExpiringHashMap;
-import org.reactiveminds.txpipe.utils.SelfExpiringMap.ExpirationListener;
 import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.listener.GenericMessageListenerContainer;
 import org.springframework.kafka.requestreply.RequestReplyFuture;
 import org.springframework.util.Assert;
 
 public class NotifyingKafkaTemplate extends ResponsiveKafkaTemplate implements Runnable {
-
-	private ExpirationListener<String> expiryListener;
+	private ONotificationListener expiryListener;
 	private final SelfExpiringHashMap<String, RequestReplyFuture<String, String, String>> expiryCache;
+	private ONotificationManager notifManager;
 	/**
 	 * 
 	 * @param producerFactory
@@ -24,6 +27,15 @@ public class NotifyingKafkaTemplate extends ResponsiveKafkaTemplate implements R
 		expiryCache = new SelfExpiringHashMap<>();
 		this.futureMap = expiryCache;
 		super.setAutoStartup(false);
+		notifManager = new ONotificationManager();
+	}
+	/**
+	 * Add a notification observer.
+	 * @param o
+	 */
+	public void setNotificationListener(ONotificationListener o) {
+		notifManager.attach(o);
+		expiryListener = o;
 	}
 	/**
 	 * Register a new promise to wait for this txnId to complete. The {@link #setExpiryListener(ExpirationListener)} listener will be notified, if there is an expiration.
@@ -41,13 +53,11 @@ public class NotifyingKafkaTemplate extends ResponsiveKafkaTemplate implements R
 	@Override
 	public void run() {
 		Assert.notNull(expiryListener, "ExpirationListener not set");
-		expiryCache.addListener(getExpiryListener());
+		expiryCache.addExpiryListener(expiryListener);
 		expiryCache.run();
 	}
-	public ExpirationListener<String> getExpiryListener() {
-		return expiryListener;
-	}
-	public void setExpiryListener(ExpirationListener<String> expiryListener) {
-		this.expiryListener = expiryListener;
+	@Override
+	protected void onFutureSet(String key) {
+		notifManager.notify(new ONotification(Type.FUTURE_SET, key));
 	}
 }

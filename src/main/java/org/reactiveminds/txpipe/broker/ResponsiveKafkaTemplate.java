@@ -59,6 +59,13 @@ public class ResponsiveKafkaTemplate extends ReplyingKafkaTemplate<String, Strin
 		}
 
 	}
+	/**
+	 * Override this method to get a notification after future is set
+	 * @param record
+	 */
+	protected void onFutureSet(String key) {
+		//noop
+	}
 	@Override
 	public void onMessage(List<ConsumerRecord<String, String>> data) {
 		
@@ -74,6 +81,7 @@ public class ResponsiveKafkaTemplate extends ReplyingKafkaTemplate<String, Strin
 					this.logger.debug("Received: " + record + " with correlationId: " + record.key());
 				}
 				future.set(record);
+				onFutureSet(record.key());
 			}
 		});
 	}

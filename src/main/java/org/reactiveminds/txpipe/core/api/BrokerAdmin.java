@@ -1,5 +1,6 @@
 package org.reactiveminds.txpipe.core.api;
 
+import java.util.Map;
 import java.util.Set;
 
 public interface BrokerAdmin {
@@ -25,6 +26,7 @@ public interface BrokerAdmin {
 	 * @return
 	 */
 	long getTotalLag(String topic, String group);
+	Map<Integer, Long> getPartitionOffset(String topic, String group);
 	/**
 	 * 
 	 * @param topic

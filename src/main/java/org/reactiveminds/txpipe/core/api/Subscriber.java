@@ -1,5 +1,6 @@
-package org.reactiveminds.txpipe.broker;
+package org.reactiveminds.txpipe.core.api;
 
+import org.reactiveminds.txpipe.broker.ConsumerRecordFilter;
 import org.springframework.kafka.listener.AcknowledgingConsumerAwareMessageListener;
 /**
  * Interface to define a standard Kafka subscriber.

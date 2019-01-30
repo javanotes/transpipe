@@ -12,12 +12,15 @@ import org.reactiveminds.txpipe.broker.KafkaSubscriber;
 import org.reactiveminds.txpipe.core.api.Processor;
 import org.reactiveminds.txpipe.core.api.TransactionMarker;
 import org.reactiveminds.txpipe.core.dto.Event;
+import org.reactiveminds.txpipe.core.dto.TransactionResult.State;
 import org.reactiveminds.txpipe.core.dto.TransactionState;
 import org.reactiveminds.txpipe.err.TxPipeIntitializationException;
 import org.reactiveminds.txpipe.spi.DiscoveryAgent;
 import org.reactiveminds.txpipe.spi.EventRecord;
 import org.reactiveminds.txpipe.spi.EventRecorder;
 import org.reactiveminds.txpipe.spi.PayloadCodec;
+import org.reactiveminds.txpipe.store.LocalMapStore;
+import org.reactiveminds.txpipe.store.LocalMapStoreFactory;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -94,6 +97,8 @@ abstract class AbstractProcessor extends KafkaSubscriber implements Processor {
 	ConfigurableApplicationContext factory;
 	
 	private EventRecorder eventRecorder;
+	
+	@Value("${txpipe.event.recorder.enable:false}")
 	private boolean isRecordEventEnabled;
 	
 	protected boolean isCommitMode = false;
@@ -105,16 +110,22 @@ abstract class AbstractProcessor extends KafkaSubscriber implements Processor {
 	private DiscoveryAgent serviceLocator;
 	
 	private ExecutorService eventThread;
+	@Autowired
+	LocalMapStoreFactory servManager;
+	
+	protected final static String DUMMY = "";
+	private LocalMapStore mapStore;
 	
 	@Override
 	public void afterPropertiesSet() throws Exception{
 		super.afterPropertiesSet();
-		try {
-			eventRecorder = factory.getBean(EventRecorder.class);
-			isRecordEventEnabled = true;
-		} catch (BeansException e1) {
-			isRecordEventEnabled = false;
-			PLOG.debug("EventRecorder was not configured");
+		if (isRecordEventEnabled) {
+			try {
+				eventRecorder = factory.getBean(EventRecorder.class);
+			} catch (BeansException e1) {
+				isRecordEventEnabled = false;
+				PLOG.warn("EventRecorder was not configured. Server will continue to function however ", e1);
+			} 
 		}
 		if(isRecordEventEnabled && recordEventAsync) {
 			eventThread = Executors.newFixedThreadPool(recordEventAsyncMaxThreads, (r)-> new Thread(r, "SubcriberEventRecorder"));
@@ -122,11 +133,15 @@ abstract class AbstractProcessor extends KafkaSubscriber implements Processor {
 		try {
 			serviceLocator = StringUtils.hasText(discoveryService) ? (DiscoveryAgent) Class.forName(discoveryService).newInstance() : factory.getBean(DiscoveryAgent.class);
 		} catch (InstantiationException | IllegalAccessException | ClassNotFoundException e) {
-			PLOG.error("Discovery class not loaded", e);
-			throw new TxPipeIntitializationException("Discovery class not loaded", e);
+			throw new TxPipeIntitializationException("Discovery service not loaded. Unable to continue. This is a fatal error ", e);
 		}
+		
 	}
-	
+	@Override
+	protected void doStart() {
+		mapStore = servManager.getObject(getListenerId());
+		super.doStart();
+	}
 	@Override
 	public void destroy() {
 		super.destroy();
@@ -140,7 +155,7 @@ abstract class AbstractProcessor extends KafkaSubscriber implements Processor {
 		}
 	}
 
-	static final char LISTENER_ID_SEP = '.';
+	private static final char LISTENER_ID_SEP = '.';
 	@Override
 	public String getListenerId() {
 		return pipeline+LISTENER_ID_SEP+componentId;
@@ -164,39 +179,58 @@ abstract class AbstractProcessor extends KafkaSubscriber implements Processor {
 		TransactionService service = serviceLocator.getServiceById(componentId);
 		String response = null;
 		
-		TransactionState state = new TransactionState();
-		state.setComponent(componentId);
-		state.setPipeline(pipeline);
-		state.setSequence((short) event.getEventId());
-		state.setTransactionId(event.getTxnId());
-		state.setTimestamp(event.getTimestamp());
-		
 		if(isCommitMode) {
 			response = service.commit(event.getTxnId(), codec.decode(event.getPayload()));
-			state.setCommit(true);
-			txnMarker.update(state);
+			recordState(event, State.COMMIT);
 		}
 		else {
 			service.rollback(event.getTxnId());
-			state.setCommit(false);
-			txnMarker.update(state);
+			recordState(event, State.ROLLBACK);
 		}
 		return response;
 	}
 	@Autowired
 	protected PayloadCodec codec;
 	/**
+	 * Update the state in internal topic and map store.
+	 * @param event
+	 * @param status
+	 */
+	private void recordState(Event event, State status) {
+		
+		if (status == State.COMMIT) {
+			mapStore.save(event.getTxnId(), DUMMY);
+		}
+		else {
+			mapStore.delete(event.getTxnId());
+		}
+		TransactionState state = new TransactionState();
+		state.setComponent(componentId);
+		state.setPipeline(pipeline);
+		state.setSequence((short) event.getEventId());
+		state.setTransactionId(event.getTxnId());
+		state.setTimestamp(event.getTimestamp());
+		state.setState(status);
+		txnMarker.update(state);
+	}
+	
+	/**
 	 * Abort on request timeout
 	 * @param event
 	 */
 	@Override
 	public final void abort(Event event) {
-		//the bean should be there, as the starting the components will depend on it
-		TransactionService service = (TransactionService) factory.getBean(componentId);
-		try {
-			service.abort(event.getTxnId());
-		} finally {
-			recordEvent(event, new CommitFailedException("Rolled back on timeout", null));
+		if (mapStore.isPresent(event.getTxnId())) {
+			//the bean should be there, as the starting the components will depend on it
+			TransactionService service = (TransactionService) factory.getBean(componentId);
+			PLOG.warn("["+getListenerId()+"] Aborting transaction : "+event.getTxnId());
+			try {
+				service.abort(event.getTxnId());
+				recordState(event, State.ABORT);
+			} 
+			finally {
+				recordEvent(event, new CommitFailedException("Rolled back on timeout", null));
+			} 
 		}
 	}
 	

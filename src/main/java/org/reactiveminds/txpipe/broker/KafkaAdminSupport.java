@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.ConsumerGroupDescription;
@@ -159,6 +160,19 @@ class KafkaAdminSupport implements BrokerAdmin {
 			throw new BrokerException("Unable to describe consumers for group - " + group, e.getCause());
 		}
 		return false;
+	}
+	@Override
+	public Map<Integer, Long> getPartitionOffset(String topic, String group) {
+		try {
+			return admin.listConsumerGroupOffsets(group).partitionsToOffsetAndMetadata().get().entrySet()
+			.stream().filter(e -> e.getKey().topic().equals(topic))
+			.collect(Collectors.toMap(e -> e.getKey().partition(), e -> e.getValue().offset()));
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		} catch (ExecutionException e) {
+			throw new BrokerException("Unable to fetch offsets topic#group - " + topic+" # "+group, e.getCause());
+		}
+		return Collections.emptyMap();
 	}
 
 }

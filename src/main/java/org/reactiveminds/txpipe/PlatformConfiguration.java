@@ -1,5 +1,6 @@
 package org.reactiveminds.txpipe;
 
+import org.reactiveminds.txpipe.broker.KafkaConfiguration;
 import org.reactiveminds.txpipe.core.ComponentManagerConfiguration;
 import org.reactiveminds.txpipe.core.ServiceManagerConfiguration;
 import org.reactiveminds.txpipe.spi.DiscoveryAgent;
@@ -9,6 +10,7 @@ import org.reactiveminds.txpipe.spi.impl.DefaultDiscoveryAgent;
 import org.reactiveminds.txpipe.spi.impl.JavaScriptDiscoveryAgent;
 import org.reactiveminds.txpipe.spi.impl.LogbackEventRecorder;
 import org.reactiveminds.txpipe.spi.impl.SnappyPayloadCodec;
+import org.reactiveminds.txpipe.store.MapStoreConfiguration;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -26,7 +28,7 @@ import org.springframework.context.annotation.Import;
  *
  */
 @Configuration
-@Import({ServiceManagerConfiguration.class, ComponentManagerConfiguration.class})
+@Import({KafkaConfiguration.class, MapStoreConfiguration.class, ComponentManagerConfiguration.class, ServiceManagerConfiguration.class})
 public class PlatformConfiguration implements ApplicationContextAware{
 	
 	@ConditionalOnProperty(name = "txpipe.event.recorder.enable")

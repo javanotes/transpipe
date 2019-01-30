@@ -2,6 +2,7 @@ package org.reactiveminds.txpipe.core.api;
 
 import java.util.concurrent.TimeUnit;
 
+import org.reactiveminds.txpipe.core.dto.Event;
 import org.reactiveminds.txpipe.core.dto.TransactionState;
 
 /**
@@ -12,11 +13,11 @@ import org.reactiveminds.txpipe.core.dto.TransactionState;
 public interface TransactionMarker {
 	/**
 	 * Invoked when transaction starts
-	 * @param txnId
+	 * @param txn
 	 * @param expiry
 	 * @param unit
 	 */
-	void begin(String txnId, long expiry, TimeUnit unit);
+	void begin(Event txn, long expiry, TimeUnit unit);
 	/**
 	 * Invoked when transaction ends
 	 * @param txnId

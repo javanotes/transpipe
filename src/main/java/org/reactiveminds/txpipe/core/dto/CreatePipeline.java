@@ -31,6 +31,6 @@ public class CreatePipeline {
 	}
 	private String name;
 	private List<String> components;
-	private long expiry;
+	private long expiry = 0;
 	private TimeUnit expiryUnit;
 }

@@ -1,4 +1,4 @@
-package org.reactiveminds.txpipe.core;
+package org.reactiveminds.txpipe.store;
 
 import java.io.IOException;
 

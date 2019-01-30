@@ -3,7 +3,6 @@ package org.reactiveminds.txpipe.core;
 import java.util.concurrent.TimeUnit;
 
 import org.reactiveminds.txpipe.core.api.ComponentManager;
-import org.reactiveminds.txpipe.core.api.LocalMapStore;
 import org.reactiveminds.txpipe.core.api.Publisher;
 import org.reactiveminds.txpipe.core.api.ServiceManager;
 import org.reactiveminds.txpipe.core.dto.Command;
@@ -16,6 +15,8 @@ import org.reactiveminds.txpipe.core.dto.StopPayload;
 import org.reactiveminds.txpipe.core.dto.TransactionResult;
 import org.reactiveminds.txpipe.err.DataValidationException;
 import org.reactiveminds.txpipe.err.TxPipeRuntimeException;
+import org.reactiveminds.txpipe.store.LocalMapStore;
+import org.reactiveminds.txpipe.store.LocalMapStoreFactory;
 import org.reactiveminds.txpipe.utils.JsonMapper;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +32,8 @@ class DefaultServiceManager implements ServiceManager{
 	ComponentManager registry;
 	@Value("${txpipe.core.orchestrationTopic:managerTopic}") 
 	private String orchestrationTopic;
+	@Value("${txpipe.core.abortTxnOnTimeout.expiryMillis:5000}")
+	private long expiryMillis;
 	@Autowired
 	private KafkaTemplate<String, String> kafkaTemplate;
 	@Autowired
@@ -107,7 +110,7 @@ class DefaultServiceManager implements ServiceManager{
 	public void registerPipeline(CreatePipeline create) {
 		PipelineDef request = new PipelineDef();
 		request.setPipelineId(create.getName());
-		request.setExpiryMillis(create.getExpiryUnit().toMillis(create.getExpiry()));
+		request.setExpiryMillis(create.getExpiry() > 0 ? create.getExpiryUnit().toMillis(create.getExpiry()) : expiryMillis);
 		for(String component : create.getComponents()) {
 			request.addComponent(component);
 		}
@@ -119,6 +122,7 @@ class DefaultServiceManager implements ServiceManager{
 	public void registerPipeline(String pipeline, String... components) {
 		PipelineDef request = new PipelineDef();
 		request.setPipelineId(pipeline);
+		request.setExpiryMillis(expiryMillis);
 		for(String component : components) {
 			request.addComponent(component);
 		}

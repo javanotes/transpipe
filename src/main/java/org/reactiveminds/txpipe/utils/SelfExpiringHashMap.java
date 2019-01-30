@@ -4,7 +4,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Observable;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -14,19 +13,21 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.reactiveminds.txpipe.utils.ONotification.Type;
 // Adapted from https://gist.github.com/pcan/16faf4e59942678377e0
 /**
  * The default implementation of a {@link SelfExpiringMap} that uses a {@link DelayQueue} to determine
  * expiration of next records.<p> Note : The notification execution happens in a cached pooled thread. So it should not
  * be used for long running/blocking tasks.
- * @author Sutanu_Dalui
+ * @author Sutanu_Dalui (adapted from https://gist.github.com/pcan/16faf4e59942678377e0)
  *
  * @param <K>
  * @param <V>
  */
-public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpiringMap<K, V>,Runnable {
+public class SelfExpiringHashMap<K, V> implements SelfExpiringMap<K, V>,Runnable {
 
-    private final Map<ExpiringKey<K>, V> internalMap;
+    protected Map<ExpiringKey<K>, V> internalMap;
     private static ExecutorService notifThread;
     private final Map<K, ExpiringKey<K>> expiringKeys;
 
@@ -39,7 +40,7 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
      * The default max life time in milliseconds.
      */
     private final long maxLifeTimeMillis;
-
+    private final ONotificationManager notifManager = new ONotificationManager();
     static{
     	notifThread = Executors.newCachedThreadPool((r) -> {
     		Thread t = new Thread(r, "SelfExpiringMapNotifier");
@@ -220,8 +221,7 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
 		K key;
 		@Override
 		public void run() {
-			setChanged();
-            notifyObservers(key);
+			notifManager.notify(new ONotification(Type.KEY_EXPIRED, key));
 		}
     }
    
@@ -238,13 +238,16 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
      * Remove all expired entries. This method should ideally be only invoked on a 
      * startup, as there can be concurrency issues otherwise.
      */
-    protected synchronized void removeAllExpired() {
+    protected synchronized final void removeAllExpired(ONotificationListener listener) {
     	for(Iterator<Entry<ExpiringKey<K>, V>> iter = internalMap.entrySet().iterator();iter.hasNext();) {
     		Entry<ExpiringKey<K>, V> entry = iter.next();
     		ExpiringKey<K> key = entry.getKey();
     		if(key.isDelayed()) {
     			iter.remove();
     			expiringKeys.remove(key.getKey());
+    			if(listener != null) {
+    				listener.onNotify(new ONotification(ONotification.Type.KEY_EXPIRED, key.getKey()));
+    			}
     		}
     	}
     }
@@ -363,7 +366,7 @@ public class SelfExpiringHashMap<K, V> extends Observable implements SelfExpirin
 	}
 
 	@Override
-	public void addListener(ExpirationListener<K> listener) {
-		addObserver(listener);
+	public void addExpiryListener(ONotificationListener listener) {
+		notifManager.attach(listener);
 	}
 }
